@@ -63,8 +63,10 @@
    the container, so tasks couldn't execute. Switched the "NAVAIA Business"
    workforce to `claude_max` (the `claude` wrapper calls `navaia -p`, routing
    through OpenRouter). Verify with `scripts/check_runtime.py`.
-8. **Agent model set to `moonshotai/kimi-k2.6`** — verified valid on OpenRouter for
-   all agents.
+8. **Agent model = `moonshotai/kimi-k2.6`** — this is a *config fact*, not a fix by
+   the runtime script: `fix_runtime.py` (step 5) and `check_runtime.py` only **read
+   and print** each agent's `model_name` to confirm it; they do not set it. The
+   model is configured at agent creation (per §3) and treated as valid on OpenRouter.
 
 ### 0.3 Drift to be aware of
 
