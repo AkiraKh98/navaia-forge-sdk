@@ -63,7 +63,7 @@ regulations. Example (clinics):
 
 ```
 عبدالمجيد الوردي
-تطوير الأعمال (Business Development)
+تطوير الأعمال - Business Development
 {{CONTACT_PHONE}}
 NAVAIA نڤايا
 ```
@@ -129,7 +129,7 @@ https://cal.com/abdulmajeed-alwardi أو راسلوني على واتساب إن
 
 مع خالص التقدير،
 عبدالمجيد الوردي
-تطوير الأعمال (Business Development)
+تطوير الأعمال - Business Development
 {{CONTACT_PHONE}}
 NAVAIA نڤايا
 
@@ -151,7 +151,7 @@ https://cal.com/abdulmajeed-alwardi
 
 مع التقدير،
 عبدالمجيد الوردي
-تطوير الأعمال (Business Development)
+تطوير الأعمال - Business Development
 {{CONTACT_PHONE}}
 NAVAIA نڤايا
 
@@ -172,7 +172,7 @@ https://cal.com/abdulmajeed-alwardi أو رسالة على واتساب تكفي
 
 مع خالص التقدير،
 عبدالمجيد الوردي
-تطوير الأعمال (Business Development)
+تطوير الأعمال - Business Development
 {{CONTACT_PHONE}}
 NAVAIA نڤايا
 
@@ -217,7 +217,7 @@ https://cal.com/abdulmajeed-alwardi أو راسلوني على واتساب إن
 
 مع خالص التقدير،
 عبدالمجيد الوردي
-تطوير الأعمال (Business Development)
+تطوير الأعمال - Business Development
 {{CONTACT_PHONE}}
 NAVAIA نڤايا
 
@@ -239,7 +239,7 @@ https://cal.com/abdulmajeed-alwardi
 
 مع التقدير،
 عبدالمجيد الوردي
-تطوير الأعمال (Business Development)
+تطوير الأعمال - Business Development
 {{CONTACT_PHONE}}
 NAVAIA نڤايا
 
@@ -260,7 +260,7 @@ NAVAIA نڤايا
 
 مع خالص التقدير،
 عبدالمجيد الوردي
-تطوير الأعمال (Business Development)
+تطوير الأعمال - Business Development
 {{CONTACT_PHONE}}
 NAVAIA نڤايا
 
@@ -305,7 +305,7 @@ https://cal.com/abdulmajeed-alwardi أو راسلوني على واتساب إن
 
 مع خالص التقدير،
 عبدالمجيد الوردي
-تطوير الأعمال (Business Development)
+تطوير الأعمال - Business Development
 {{CONTACT_PHONE}}
 NAVAIA نڤايا
 
@@ -327,7 +327,7 @@ https://cal.com/abdulmajeed-alwardi
 
 مع التقدير،
 عبدالمجيد الوردي
-تطوير الأعمال (Business Development)
+تطوير الأعمال - Business Development
 {{CONTACT_PHONE}}
 NAVAIA نڤايا
 
@@ -348,7 +348,7 @@ NAVAIA نڤايا
 
 مع خالص التقدير،
 عبدالمجيد الوردي
-تطوير الأعمال (Business Development)
+تطوير الأعمال - Business Development
 {{CONTACT_PHONE}}
 NAVAIA نڤايا
 
@@ -393,7 +393,7 @@ https://cal.com/abdulmajeed-alwardi أو راسلوني على واتساب إن
 
 مع خالص التقدير،
 عبدالمجيد الوردي
-تطوير الأعمال (Business Development)
+تطوير الأعمال - Business Development
 {{CONTACT_PHONE}}
 NAVAIA نڤايا
 
@@ -415,7 +415,7 @@ https://cal.com/abdulmajeed-alwardi
 
 مع التقدير،
 عبدالمجيد الوردي
-تطوير الأعمال (Business Development)
+تطوير الأعمال - Business Development
 {{CONTACT_PHONE}}
 NAVAIA نڤايا
 
@@ -436,7 +436,7 @@ NAVAIA نڤايا
 
 مع خالص التقدير،
 عبدالمجيد الوردي
-تطوير الأعمال (Business Development)
+تطوير الأعمال - Business Development
 {{CONTACT_PHONE}}
 NAVAIA نڤايا
 
@@ -480,7 +480,7 @@ https://cal.com/abdulmajeed-alwardi أو راسلوني على واتساب إن
 
 مع خالص التقدير،
 عبدالمجيد الوردي
-تطوير الأعمال (Business Development)
+تطوير الأعمال - Business Development
 {{CONTACT_PHONE}}
 NAVAIA نڤايا
 
@@ -502,7 +502,7 @@ https://cal.com/abdulmajeed-alwardi
 
 مع التقدير،
 عبدالمجيد الوردي
-تطوير الأعمال (Business Development)
+تطوير الأعمال - Business Development
 {{CONTACT_PHONE}}
 NAVAIA نڤايا
 
@@ -523,7 +523,7 @@ NAVAIA نڤايا
 
 مع خالص التقدير،
 عبدالمجيد الوردي
-تطوير الأعمال (Business Development)
+تطوير الأعمال - Business Development
 {{CONTACT_PHONE}}
 NAVAIA نڤايا
 

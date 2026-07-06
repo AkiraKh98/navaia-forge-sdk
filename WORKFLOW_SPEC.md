@@ -1,11 +1,78 @@
 # NAVAIA Business — Workforce Workflow Specification
 
 > Living document. Iterate with the user until the workforce behaves exactly as needed.
-> Last updated: 2026-07-06 (post-import + cross-lang dedup; pre outreach-strategy)
+> Last updated: 2026-07-06 (added §0 known-good setup + fixes; outreach templates done)
 
-> **For future sessions: read §10.10 (Post-Import Pipeline) and §11 (Outreach
-> Strategy, when populated) before re-running any lead/email/import work.
-> The state of the data and CRM is documented there, not assumed.**
+> **For future sessions: read §0 (Current known-good setup + fixes), §10.10
+> (Post-Import Pipeline) and §11 (Outreach Strategy) before re-running any
+> setup/lead/email/import work. The state of the setup, data, and CRM is
+> documented there, not assumed.**
+
+---
+
+## 0. Current Known-Good Setup + Fixes Applied
+
+> **Read this first.** This is the authoritative record of how the setup/workflow/
+> agent/workforce is *actually* configured and working now, plus the fixes that got
+> it there. Reconstructed from git history + the runtime scripts in `scripts/`
+> (`fix_runtime.py`, `check_runtime.py`, `setup_db.py`) — it is not the generic
+> `ASSESSMENT.md` example (see the drift note at the end).
+
+### 0.1 Known-good current config
+
+| Piece | Current value |
+|-------|---------------|
+| Backend | Local Docker stack, `http://localhost:8001` (all execution + storage here) |
+| Workforce | "NAVAIA Business" — local `8515d24a-6195-4a73-9cd3-37eb02f08693`, cloud `131bb52f-e5eb-44ad-8134-03dc6908b485` |
+| **Runtime mode** | **`claude_max`** (NOT `claw_code` / `navaia_code`) |
+| **Model (all agents)** | **`moonshotai/kimi-k2.6`** (valid on OpenRouter) |
+| Agents | 7 pre-built (Ahmed GM + Tariq SDR + 5 future — see §3) |
+| SDK version | `0.2.3` (PyPI, `__init__.py`/`pyproject.toml` synced) |
+| Auth | JWT (`eyJ…`) → `Authorization: Bearer`; long-lived `nf_…` keys → `X-API-Key` |
+| Local dev flag | `DEBUG=true` in `.env` (required locally) |
+| DB init | `scripts/setup_db.py` (run once after first backend start) |
+
+### 0.2 Fixes applied (what was broken → what fixed it)
+
+**Setup / SDK (from git history):**
+
+1. **JWT auth header** — SDK sent JWT tokens as `X-API-Key`, so the backend
+   couldn't resolve the user → 401 "User not found" and 500 on API-key creation.
+   Fixed `http.py` to detect the `eyJ` prefix and send JWTs as `Authorization:
+   Bearer`; `nf_…` keys still go as `X-API-Key`. (SDK `0.2.3`, `b55f0e3` / `4e4a7dd`)
+2. **`DEBUG=false` blocked startup** — backend refused to boot with localhost-only
+   `ALLOWED_ORIGINS`. `.env.example` set to `DEBUG=true` for local dev. (`b55f0e3`)
+3. **DB tables not auto-created** — the backend image does not auto-migrate, so a
+   fresh install had no tables. Added `scripts/setup_db.py` that imports every
+   SQLAlchemy model and runs `create_all`. (`b55f0e3` → `b7b8cae`)
+4. **Cross-platform DB setup** — replaced the inline `python -c` one-liner (broke
+   on Windows PowerShell quoting) with `setup_db.py`, plus a `sys.path` fix so it
+   runs without `-e PYTHONPATH=/app`. (`b7b8cae`)
+5. **Scheduler tables missing** — added `import app.scheduler.models` to
+   `setup_db.py` so scheduler/pipeline tables are created. (`eb291d2`)
+6. **Version + doc drift** — synced `__init__.py` to `0.2.3`; added a default
+   timeout to `HttpConfig` (standalone WS example); fixed README (`send_message`
+   takes no `agent_id`; `integrations.create` needs `workforce_id` + `config_json`);
+   pointed `pyproject.toml` + compose download URLs to the public
+   `NavaiaSolutions/navaia-forge-sdk`; improved Windows notes (`curl.exe`, setup
+   script download). (`b7b8cae`, `c4ec6b4`, `f20f36b`)
+
+**Workforce / runtime (from `scripts/fix_runtime.py`):**
+
+7. **Runtime `claw_code` → `claude_max`** — the `claw` CLI binary is not present in
+   the container, so tasks couldn't execute. Switched the "NAVAIA Business"
+   workforce to `claude_max` (the `claude` wrapper calls `navaia -p`, routing
+   through OpenRouter). Verify with `scripts/check_runtime.py`.
+8. **Agent model set to `moonshotai/kimi-k2.6`** — verified valid on OpenRouter for
+   all agents.
+
+### 0.3 Drift to be aware of
+
+`ASSESSMENT.md` (the candidate brief) still shows the *generic example* config —
+`runtime_mode="navaia_code"` and `anthropic/claude-sonnet-4`. That is a template,
+**not** the running workforce. The live workforce uses `claude_max` +
+`moonshotai/kimi-k2.6` as in §0.1. Don't copy the assessment example values into
+the real workforce.
 
 ---
 
@@ -678,4 +745,5 @@ are per-lead; the rest are per-vertical.
 | 2026-07-06 | Positioning rule added: frame as **حلول (solutions), not منصّة (platform)** — platform implies work/onboarding for the reader; pair with a "works on your behalf, no extra load" clause and a "we start from…" framing so one pain implies broader scope without a services list. |
 | 2026-07-06 | **Vertical correction:** earlier templates used a wrong generic set (restaurants/retail/professional services). Rebuilt on the **correct 5 co-founder verticals** (§5.1): Contracting/Facilities, Finance & Debt Collection, Private Specialty Clinics (T1); Real Estate, Training Institutes (T2). `OUTREACH_TEMPLATES.md` now has full 3-touch sequences for all 5, each with its own pain line, benefit pairing, and **vertical-specific compliance** (SAMA for finance, MoH for clinics, REGA for real estate, TVTC for training, PDPL throughout). Fixed §11.2 value props to match. |
 | 2026-07-06 | Template copy fixes per user: (1) "وأتّصل بكم" → "لأتّصل بكم"; (2) positive-reply now branches on whether they already booked via cal.com (check first, two replies A/B); (3) "تعمل نيابةً عنكم" (works *instead of* you) → "تعمل إلى جانبكم" (works *alongside* you) throughout; (4) **the +30% / 40–60% numbers are clinic-only** — all other verticals now carry placeholders (`{نسبة الأثر}`, `{نسبة التحصيل}`, `{نسبة خفض التكاليف}`) for the user to fill. **Still needed from user:** phone number + non-clinic impact rates. |
+| 2026-07-06 | Added **§0 Current Known-Good Setup + Fixes Applied** at the top of the spec — consolidates the actual running config (runtime `claude_max`, model `moonshotai/kimi-k2.6`, SDK 0.2.3, JWT→Bearer, DEBUG=true, `setup_db.py`) and the fixes that got there (JWT header, DB init, cross-platform setup, scheduler tables, version/doc sync, runtime switch from `claw_code`). Reconstructed from git history + `scripts/fix_runtime.py`/`check_runtime.py`. Flags the `ASSESSMENT.md` example drift (navaia_code/claude-sonnet-4 is generic, not live). Also fixed the templates signature to `تطوير الأعمال - Business Development` (no brackets, single dash) and regenerated the PDF. |
 | 2026-07-06 | Added **per-vertical field vocabulary** — each sequence now weaves 2–3 well-known Arabic field terms to signal domain familiarity, with a documented **Field lexicon** line per vertical: Contracting (عروض أسعار/RFQ, مناقصات وعطاءات, مواعيد تسليم العطاءات, عقود صيانة وقائية, SLA); Finance (محفظة التحصيل, أعمار الديون, الأقساط المتأخّرة, لوائح ممارسات التحصيل); Clinics (المراجعين, عدم الحضور/no-show, قائمة الانتظار, إشغال الجدول); Real Estate (الوحدات الشاغرة, المعاينة, دفعات الإيجار وسنداتها); Training (المتدربين, الالتحاق بالدفعة, المنافسات الحكومية, منصة اعتماد/Etimad). Positioning rule added in the templates conventions. |
