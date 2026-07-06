@@ -47,3 +47,7 @@ Thumbs.db
 credentials.json
 _local_api_key.txt
 ONBOARDING_KEYS.md
+
+# ── Local lead data (PII) / CRM dumps ──────────────────────
+leads*.csv
+scripts/*.json
