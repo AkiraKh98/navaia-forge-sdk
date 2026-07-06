@@ -569,29 +569,36 @@ unverified at SMTP layer." Don't reject these leads for that reason.
 
 **Result on 2026-07-06:** 0 duplicates found across 645 companies.
 
-#### 10.10.6 Current data state (do not assume — re-verify before re-importing)
+#### 10.10.6 Current data state (single source of truth)
+
+**Junk cleanup done 2026-07-06:** all stale/intermediate/duplicate lead files were
+eliminated. **`leads_enriched.csv` is now the one and only lead dataset** — do not
+recreate the intermediates.
 
 | File / Source | Rows | Status |
 |---|---|---|
-| `leads.csv` | 50 | First-run raw, 14 stale (replaced by second run) |
-| `leads_to_import.csv` | 48 | Second-run raw, pre-dedup |
-| `leads_clean.csv` | 36 | Post English-name dedup — **this is the import set** |
-| `leads_enriched.csv` | 36 | Post enrichment + Snov verification |
+| **`leads_enriched.csv`** | 36 | **THE dataset** — clean + enrichment + Snov verification. Columns: company_name, domain_name, address, phone, email, email_status, sector, vertical_tier, created_by, lead_source, place_id. |
 | CRM (Twenty) | 645 companies | Includes 35 from this run + 1 test (اتقان) |
 | CRM contacts | ~491 | Includes 35 from this run + 1 test |
 
 **Before re-running import:** run `scripts/verify_import.py` and
 `scripts/crosslang_dedup.py` to confirm no new collisions. The 35
-already-imported companies are now in CRM and will create dupes if
-`leads_clean.csv` is re-imported as-is.
+already-imported companies are in CRM and will create dupes if
+`leads_enriched.csv` is re-imported as-is.
 
-#### 10.10.7 Stale files (do not trust without re-running)
+#### 10.10.7 Eliminated junk (deleted 2026-07-06 — do not recreate)
 
-| File | Issue |
+These were stale/intermediate/duplicate and have been **deleted** per the
+"useful data upfront, no junk" rule. Listed so nobody re-generates them by habit:
+
+| File | Why it was junk |
 |---|---|
-| `scripts/existing_crm_data.json` | Cached 21,500 companies — actual is 609 (now 645). Do not use as source of truth. |
-| `leads_final.csv` | Pre-import artifact, superseded by `leads_clean.csv` + `leads_enriched.csv`. Keep for history, do not import. |
-| `leads_verified.csv`, `leads_verified_final.csv` in repo root | Same — intermediate artifacts. Import set is `leads_enriched.csv`. |
+| `leads.csv`, `leads_final.csv`, `leads_verified.csv` | 50-row raw/intermediate first/second-run stages, superseded. |
+| `leads_to_import.csv` | 48-row pre-dedup intermediate. |
+| `leads_clean.csv` | 36-row subset of `leads_enriched.csv`. |
+| `leads_verified_final.csv` | Byte-identical duplicate of `leads_clean.csv`. |
+| `scripts/existing_crm_data.json` | Stale cache (claimed 21,500; actual 645). |
+| `scripts/dedup_output.txt`, `scripts/test_crm.json` | Throwaway console dump / test artifact. |
 
 ---
 
@@ -776,6 +783,7 @@ are per-lead; the rest are per-vertical.
 | 2026-07-06 | Positioning rule added: frame as **حلول (solutions), not منصّة (platform)** — platform implies work/onboarding for the reader; pair with a "works on your behalf, no extra load" clause and a "we start from…" framing so one pain implies broader scope without a services list. |
 | 2026-07-06 | **Vertical correction:** earlier templates used a wrong generic set (restaurants/retail/professional services). Rebuilt on the **correct 5 co-founder verticals** (§5.1): Contracting/Facilities, Finance & Debt Collection, Private Specialty Clinics (T1); Real Estate, Training Institutes (T2). `OUTREACH_TEMPLATES.md` now has full 3-touch sequences for all 5, each with its own pain line, benefit pairing, and **vertical-specific compliance** (SAMA for finance, MoH for clinics, REGA for real estate, TVTC for training, PDPL throughout). Fixed §11.2 value props to match. |
 | 2026-07-06 | Template copy fixes per user: (1) "وأتّصل بكم" → "لأتّصل بكم"; (2) positive-reply now branches on whether they already booked via cal.com (check first, two replies A/B); (3) "تعمل نيابةً عنكم" (works *instead of* you) → "تعمل إلى جانبكم" (works *alongside* you) throughout; (4) **the +30% / 40–60% numbers are clinic-only** — all other verticals now carry placeholders (`{نسبة الأثر}`, `{نسبة التحصيل}`, `{نسبة خفض التكاليف}`) for the user to fill. **Still needed from user:** phone number + non-clinic impact rates. |
+| 2026-07-06 | **Junk data eliminated** ("useful data upfront" rule): deleted 9 stale/intermediate/duplicate files (`leads.csv`, `leads_clean.csv`, `leads_final.csv`, `leads_to_import.csv`, `leads_verified.csv`, `leads_verified_final.csv`, `scripts/existing_crm_data.json`, `dedup_output.txt`, `test_crm.json`). **`leads_enriched.csv` (36 leads) is now the single source of truth.** Rewrote §10.10.6 (single dataset) and §10.10.7 (now lists what was deleted, not "stale but keep"). |
 | 2026-07-06 | Handoff clarity for future sessions (any model): added a prominent **▶ NEXT STEP** block at the top (templates done; remaining = user's non-clinic numbers + scripting-model send/automation; explicit planning-vs-scripting role boundary). Refreshed **§9** — the stale "outreach In progress / needs cal.com+tone" row replaced with accurate Done/Blocked/Pending rows. |
 | 2026-07-06 | Added **§0 Current Known-Good Setup + Fixes Applied** at the top of the spec — consolidates the actual running config (runtime `claude_max`, model `moonshotai/kimi-k2.6`, SDK 0.2.3, JWT→Bearer, DEBUG=true, `setup_db.py`) and the fixes that got there (JWT header, DB init, cross-platform setup, scheduler tables, version/doc sync, runtime switch from `claw_code`). Reconstructed from git history + `scripts/fix_runtime.py`/`check_runtime.py`. Flags the `ASSESSMENT.md` example drift (navaia_code/claude-sonnet-4 is generic, not live). Also fixed the templates signature to `تطوير الأعمال - Business Development` (no brackets, single dash) and regenerated the PDF. |
 | 2026-07-06 | Added **per-vertical field vocabulary** — each sequence now weaves 2–3 well-known Arabic field terms to signal domain familiarity, with a documented **Field lexicon** line per vertical: Contracting (عروض أسعار/RFQ, مناقصات وعطاءات, مواعيد تسليم العطاءات, عقود صيانة وقائية, SLA); Finance (محفظة التحصيل, أعمار الديون, الأقساط المتأخّرة, لوائح ممارسات التحصيل); Clinics (المراجعين, عدم الحضور/no-show, قائمة الانتظار, إشغال الجدول); Real Estate (الوحدات الشاغرة, المعاينة, دفعات الإيجار وسنداتها); Training (المتدربين, الالتحاق بالدفعة, المنافسات الحكومية, منصة اعتماد/Etimad). Positioning rule added in the templates conventions. |
