@@ -600,6 +600,23 @@ These were stale/intermediate/duplicate and have been **deleted** per the
 | `scripts/existing_crm_data.json` | Stale cache (claimed 21,500; actual 645). |
 | `scripts/dedup_output.txt`, `scripts/test_crm.json` | Throwaway console dump / test artifact. |
 
+#### 10.10.8 Canonical scripts (post-cleanup 2026-07-06)
+
+`scripts/` was pruned from 65 → **29** — deleted 36 junk (all `test_*`, `debug_*`,
+`inspect_*`, and superseded duplicates). The 29 keepers are the real pipeline:
+
+- **Setup/runtime:** `setup_db.py`, `fix_runtime.py`, `check_runtime.py`
+- **Lead fetch:** `fetch_leads.py`
+- **Clean/dedup:** `step1_clean.py`, `graphql_dedup.py`, `crosslang_dedup.py`
+- **Enrich:** `enrich_emails.py`, `fetch_emails_snov.py`, `step2_snov_v2.py`, `step2_snov_verify.py`
+- **Verify:** `verify_all_emails.py`, `verify_import.py`
+- **Import:** `import_all_leads.py`
+- **CRM utils:** `configure_twenty.py`, `get_crm_schema.py`, `query_twenty.py`, `dump_crm.py`, `gen_integration_sql.py`
+- **Checks:** `check_snov_credits.py`, `check_email_status.py`, `check_cloud_integrations.py`
+- **Task ops:** `create_lead_task.py`, `monitor_task.py`, `check_task_status.py`, `approve_task.py`, `reset_task.py`, `update_csv_task.py`, `update_task_with_key.py`
+
+Do not recreate the deleted experiments — if an endpoint needs probing, do it inline.
+
 ---
 
 ## 11. Outreach Strategy (design — planning only)
@@ -783,6 +800,7 @@ are per-lead; the rest are per-vertical.
 | 2026-07-06 | Positioning rule added: frame as **حلول (solutions), not منصّة (platform)** — platform implies work/onboarding for the reader; pair with a "works on your behalf, no extra load" clause and a "we start from…" framing so one pain implies broader scope without a services list. |
 | 2026-07-06 | **Vertical correction:** earlier templates used a wrong generic set (restaurants/retail/professional services). Rebuilt on the **correct 5 co-founder verticals** (§5.1): Contracting/Facilities, Finance & Debt Collection, Private Specialty Clinics (T1); Real Estate, Training Institutes (T2). `OUTREACH_TEMPLATES.md` now has full 3-touch sequences for all 5, each with its own pain line, benefit pairing, and **vertical-specific compliance** (SAMA for finance, MoH for clinics, REGA for real estate, TVTC for training, PDPL throughout). Fixed §11.2 value props to match. |
 | 2026-07-06 | Template copy fixes per user: (1) "وأتّصل بكم" → "لأتّصل بكم"; (2) positive-reply now branches on whether they already booked via cal.com (check first, two replies A/B); (3) "تعمل نيابةً عنكم" (works *instead of* you) → "تعمل إلى جانبكم" (works *alongside* you) throughout; (4) **the +30% / 40–60% numbers are clinic-only** — all other verticals now carry placeholders (`{نسبة الأثر}`, `{نسبة التحصيل}`, `{نسبة خفض التكاليف}`) for the user to fill. **Still needed from user:** phone number + non-clinic impact rates. |
+| 2026-07-06 | **Scripts pruned 65 → 29** — deleted 36 junk (all `test_*`, `debug_*`, `inspect_*`, and superseded duplicates); kept the real pipeline. Canonical set documented in §10.10.8. Also gitignored `leads*.csv` (PII) and `scripts/*.json` dumps. |
 | 2026-07-06 | **Junk data eliminated** ("useful data upfront" rule): deleted 9 stale/intermediate/duplicate files (`leads.csv`, `leads_clean.csv`, `leads_final.csv`, `leads_to_import.csv`, `leads_verified.csv`, `leads_verified_final.csv`, `scripts/existing_crm_data.json`, `dedup_output.txt`, `test_crm.json`). **`leads_enriched.csv` (36 leads) is now the single source of truth.** Rewrote §10.10.6 (single dataset) and §10.10.7 (now lists what was deleted, not "stale but keep"). |
 | 2026-07-06 | Handoff clarity for future sessions (any model): added a prominent **▶ NEXT STEP** block at the top (templates done; remaining = user's non-clinic numbers + scripting-model send/automation; explicit planning-vs-scripting role boundary). Refreshed **§9** — the stale "outreach In progress / needs cal.com+tone" row replaced with accurate Done/Blocked/Pending rows. |
 | 2026-07-06 | Added **§0 Current Known-Good Setup + Fixes Applied** at the top of the spec — consolidates the actual running config (runtime `claude_max`, model `moonshotai/kimi-k2.6`, SDK 0.2.3, JWT→Bearer, DEBUG=true, `setup_db.py`) and the fixes that got there (JWT header, DB init, cross-platform setup, scheduler tables, version/doc sync, runtime switch from `claw_code`). Reconstructed from git history + `scripts/fix_runtime.py`/`check_runtime.py`. Flags the `ASSESSMENT.md` example drift (navaia_code/claude-sonnet-4 is generic, not live). Also fixed the templates signature to `تطوير الأعمال - Business Development` (no brackets, single dash) and regenerated the PDF. |
