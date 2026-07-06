@@ -8,6 +8,32 @@
 > setup/lead/email/import work. The state of the setup, data, and CRM is
 > documented there, not assumed.**
 
+> ## ▶ NEXT STEP (as of 2026-07-06) — read before doing anything
+>
+> The outreach **templates are DONE** — see `OUTREACH_TEMPLATES.md` (5 verticals ×
+> 3 touches, subjects, signature, positive-reply + Ramadan variants) and the strategy
+> in §11. A clean PDF exists at `NAVAIA_Outreach_Templates.pdf`. **Do NOT rebuild the
+> templates, and do NOT re-run lead-finding/enrichment/import — that is all finished
+> (§9, §10.10).**
+>
+> What actually remains, in order:
+>
+> 1. **[Needs user input]** The non-clinic impact numbers are placeholders on purpose:
+>    `{نسبة الأثر}`, `{نسبة التحصيل}`, `{نسبة خفض التكاليف}`. Clinics already have real
+>    figures (+30% / 40–60%). **Do NOT invent numbers** — ask the user, then fill.
+> 2. **[Scripting/execution model, NOT this planning session]** Wire sending: merge
+>    templates with CRM lead data, apply the §11.5 lead score, send via the Zoho email
+>    agent (§5.3); WhatsApp via Baian is **Blocked** until the team restores the token
+>    (§9). Also still-blank: the sender's honorific/name per lead (`{honorific+name}`)
+>    and each lead's `{pain_line}`.
+> 3. **[Planning]** Optional: extend cadence to +10/+17 (proposed in §11.1, not approved).
+>
+> **Role boundary:** this repo/session is **planning only** — templates, specs, docs.
+> All executable work (enrichment, verification, sending, import, the scoring pipeline)
+> is done by a **separate scripting model** from a written spec. See the §11 scope note.
+> If you are that scripting model, your spec is §11.5 (scoring) + §5.3/§5.2 (send) +
+> `OUTREACH_TEMPLATES.md` (content).
+
 ---
 
 ## 0. Current Known-Good Setup + Fixes Applied
@@ -367,8 +393,11 @@ task assigned on cloud flows down to local execution.
 | **Email verification pipeline (Snov.io v2)** | **Done (with caveat)** | `scripts/verify_all_emails.py`. All 15 verified `.sa` emails return `smtp_status: unknown` — Saudi mail servers don't respond to SMTP probes. Treat as "likely valid, unverified at SMTP layer." |
 | **Email enrichment (website crawl + web search)** | **Done** | `scripts/enrich_emails.py` — homepage + 10 contact paths + DuckDuckGo. Found 4 new emails. |
 | Baian (WhatsApp) | Blocked | Token redacted on cloud, Baian service offline. Resume when team provides token. |
-| **Outreach strategy (templates, cal.com, lead scoring)** | **In progress** | User asked 2026-07-06. See §11 placeholder. Needs: tone/voice Q&A, cal.com link, target roles, free LinkedIn lookup options. |
-| Scheduler/pipeline automation | Pending | Design after the core agents are wired and tested, AND outreach strategy is approved. |
+| **Outreach templates (5 verticals × 3 touches)** | **Done** | `OUTREACH_TEMPLATES.md` — formal Arabic, field vocab, per-vertical compliance, cal.com CTA, 4-line signature. Clean PDF: `NAVAIA_Outreach_Templates.pdf`. Decisions + research in §11. |
+| Outreach — non-clinic impact numbers | **Blocked on user** | Placeholders `{نسبة الأثر}` / `{نسبة التحصيل}` / `{نسبة خفض التكاليف}` — clinics have real figures. Do NOT invent. See NEXT STEP at top. |
+| Outreach — sending / automation | Pending (scripting model) | Merge templates + CRM leads, apply §11.5 score, send via Zoho email agent (§5.3); WhatsApp via Baian is Blocked. Planning session does NOT do this. |
+| Lead scoring model | **Designed** | Rules-based 0–100 model specified in §11.5. Implementation is scripting-model work. |
+| Scheduler/pipeline automation | Pending | Design after outreach sending is wired and tested. |
 | Additional agents | Pending | Explore with user. |
 
 ---
@@ -747,5 +776,6 @@ are per-lead; the rest are per-vertical.
 | 2026-07-06 | Positioning rule added: frame as **حلول (solutions), not منصّة (platform)** — platform implies work/onboarding for the reader; pair with a "works on your behalf, no extra load" clause and a "we start from…" framing so one pain implies broader scope without a services list. |
 | 2026-07-06 | **Vertical correction:** earlier templates used a wrong generic set (restaurants/retail/professional services). Rebuilt on the **correct 5 co-founder verticals** (§5.1): Contracting/Facilities, Finance & Debt Collection, Private Specialty Clinics (T1); Real Estate, Training Institutes (T2). `OUTREACH_TEMPLATES.md` now has full 3-touch sequences for all 5, each with its own pain line, benefit pairing, and **vertical-specific compliance** (SAMA for finance, MoH for clinics, REGA for real estate, TVTC for training, PDPL throughout). Fixed §11.2 value props to match. |
 | 2026-07-06 | Template copy fixes per user: (1) "وأتّصل بكم" → "لأتّصل بكم"; (2) positive-reply now branches on whether they already booked via cal.com (check first, two replies A/B); (3) "تعمل نيابةً عنكم" (works *instead of* you) → "تعمل إلى جانبكم" (works *alongside* you) throughout; (4) **the +30% / 40–60% numbers are clinic-only** — all other verticals now carry placeholders (`{نسبة الأثر}`, `{نسبة التحصيل}`, `{نسبة خفض التكاليف}`) for the user to fill. **Still needed from user:** phone number + non-clinic impact rates. |
+| 2026-07-06 | Handoff clarity for future sessions (any model): added a prominent **▶ NEXT STEP** block at the top (templates done; remaining = user's non-clinic numbers + scripting-model send/automation; explicit planning-vs-scripting role boundary). Refreshed **§9** — the stale "outreach In progress / needs cal.com+tone" row replaced with accurate Done/Blocked/Pending rows. |
 | 2026-07-06 | Added **§0 Current Known-Good Setup + Fixes Applied** at the top of the spec — consolidates the actual running config (runtime `claude_max`, model `moonshotai/kimi-k2.6`, SDK 0.2.3, JWT→Bearer, DEBUG=true, `setup_db.py`) and the fixes that got there (JWT header, DB init, cross-platform setup, scheduler tables, version/doc sync, runtime switch from `claw_code`). Reconstructed from git history + `scripts/fix_runtime.py`/`check_runtime.py`. Flags the `ASSESSMENT.md` example drift (navaia_code/claude-sonnet-4 is generic, not live). Also fixed the templates signature to `تطوير الأعمال - Business Development` (no brackets, single dash) and regenerated the PDF. |
 | 2026-07-06 | Added **per-vertical field vocabulary** — each sequence now weaves 2–3 well-known Arabic field terms to signal domain familiarity, with a documented **Field lexicon** line per vertical: Contracting (عروض أسعار/RFQ, مناقصات وعطاءات, مواعيد تسليم العطاءات, عقود صيانة وقائية, SLA); Finance (محفظة التحصيل, أعمار الديون, الأقساط المتأخّرة, لوائح ممارسات التحصيل); Clinics (المراجعين, عدم الحضور/no-show, قائمة الانتظار, إشغال الجدول); Real Estate (الوحدات الشاغرة, المعاينة, دفعات الإيجار وسنداتها); Training (المتدربين, الالتحاق بالدفعة, المنافسات الحكومية, منصة اعتماد/Etimad). Positioning rule added in the templates conventions. |
