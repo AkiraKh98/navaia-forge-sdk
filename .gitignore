@@ -45,3 +45,5 @@ Thumbs.db
 *.pem
 *.key
 credentials.json
+_local_api_key.txt
+ONBOARDING_KEYS.md
