@@ -1,4 +1,4 @@
-# Playbook — Lead Pipeline (fetch → clean → dedup → enrich → verify → import)
+# Playbook — Lead Pipeline (fetch → clean → enrich → verify → import)
 
 > SOP for the lead pipeline. Runs as **direct Python scripts** (not agent tool calls):
 > the `moonshotai/kimi-k2.6` runtime produced malformed JSON for complex tool calls, so
