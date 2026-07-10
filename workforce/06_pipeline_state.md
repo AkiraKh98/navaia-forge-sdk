@@ -5,14 +5,14 @@
 
 ---
 
-## CRM — Twenty CRM is live
+## CRM — Twenty CRM is live (shared system)
 
 - **Base URL:** `https://crm.navaia.sa`
 - **Auth:** `TWENTY_TOKEN` in `.env` (header: `Authorization: Bearer <token>`)
 - **REST endpoint:** `/rest/companies` (POST), `/rest/people` (POST with `companyId`)
 - **GraphQL endpoint:** `/graphql` (use for pagination — see below)
-- **Current state:** 645 companies, ~491 contacts. Of these, 36 are from the
-  Riyadh lead run (35 bulk + 1 test = شركة اتقان العقارية).
+- **CRM is shared** — other people add leads too. Only message leads where `createdBy.name = "Mjeed"`. Do not message leads added by other people.
+- **Current state:** 645 companies, ~491 contacts. Of these, **36 are from Mjeed's Riyadh lead run** (35 bulk + 1 test = شركة اتقان العقارية). The rest were added by other people.
 
 ---
 
@@ -32,13 +32,12 @@
 
 ## Pipeline Steps (in order — do not skip)
 
-1. **Raw fetch** → `leads.csv` (50, first run) → `leads_to_import.csv` (48, second run)
-2. **English-name dedup vs CRM** → `scripts/graphql_dedup.py` → `leads_clean.csv` (36 leads, 12 dups removed)
-3. **Email enrichment (website crawl + web search)** → `scripts/enrich_emails.py` → `leads_enriched.csv` (36 leads, +4 new emails)
-4. **Email verification (Snov.io v2)** → `scripts/verify_all_emails.py` → status updates in `leads_enriched.csv`
-5. **Bulk import to CRM** → `scripts/import_all_leads.py` → 35 companies + 35 people created
-6. **Cross-language dedup** → `scripts/crosslang_dedup.py` → confirmed 0 dups across 645 companies
-7. **Post-import verify** → `scripts/verify_import.py` → GraphQL `totalCount` check
+1. **Raw fetch** → Twenty CRM (Google Places API, direct import)
+2. **Email enrichment (website crawl + web search)** → Twenty CRM via `scripts/enrich_emails.py` + `scripts/fetch_emails_snov.py`
+3. **Email verification (Snov.io v2)** → Twenty CRM via `scripts/verify_all_emails.py`
+4. **Post-import verify** → `scripts/verify_import.py` — GraphQL `totalCount` check vs expected count
+
+> **No dedup step.** The Twenty CRM backend handles duplicate elimination automatically. Never run an agent-side dedup step — it costs tokens for nothing. The old dedup scripts (`graphql_dedup.py`, `crosslang_dedup.py`) are kept as manual one-off reconciliation tools only — not part of the pipeline.
 
 ---
 
@@ -62,10 +61,14 @@ unverified at SMTP layer." Don't reject these leads for that reason.
 
 ---
 
-## Cross-Language Dedup Approach (reuse this)
+## Cross-Language Dedup Approach (archived reference)
 
-`scripts/crosslang_dedup.py` catches Arabic/English duplicate company names by:
+> The cross-language dedup script (`scripts/crosslang_dedup.py`) is kept as a manual
+> one-off reconciliation tool only. It is **not** part of the pipeline — the CRM
+> backend handles dedup. This section is historical reference for the approach used
+> during the initial import (2026-07-06).
 
+The approach catches Arabic/English duplicate company names by:
 1. Fetching all companies + contacts via GraphQL.
 2. Normalizing: lowercase, strip diacritics, remove `شركة` / `مؤسسة` / `Co.` /
    `LLC` / `Ltd` / `Inc`.
@@ -80,22 +83,18 @@ unverified at SMTP layer." Don't reject these leads for that reason.
 
 ---
 
-## Current Data State (single source of truth)
+## Current Data State (single source of truth: Twenty CRM)
 
-**Junk cleanup done 2026-07-06:** all stale/intermediate/duplicate lead files
-were eliminated. **`leads_enriched.csv` is now the one and only lead dataset** —
-do not recreate the intermediates.
+> The Twenty CRM is the single source of truth for all leads. The CSV files were
+> a Phase-1 workaround before CRM access was available. They are no longer needed
+> as an intermediate data store.
 
-| File / Source | Rows | Status |
-|---------------|------|--------|
-| **`leads_enriched.csv`** | 36 | **THE dataset** — clean + enrichment + Snov verification. Columns: company_name, domain_name, address, phone, email, email_status, sector, vertical_tier, created_by, lead_source, place_id. |
-| CRM (Twenty) | 645 companies | Includes 35 from this run + 1 test (اتقان) |
-| CRM contacts | ~491 | Includes 35 from this run + 1 test |
+| Source | Count | Status |
+|--------|-------|--------|
+| **CRM (Twenty)** | 645 companies, ~491 contacts | **THE source of truth** — includes 35 from the initial Riyadh run + 1 test (اتقان) |
+| **`leads_enriched.csv`** | 36 | **Historical only** — do not use as an active data source. Keep as reference for the initial import. |
 
-**Before re-running import:** run `scripts/verify_import.py` and
-`scripts/crosslang_dedup.py` to confirm no new collisions. The 35
-already-imported companies are in CRM and will create dupes if
-`leads_enriched.csv` is re-imported as-is.
+**Before re-running import:** run `scripts/verify_import.py` to confirm current CRM state. The 35 already-imported companies are in CRM and will be auto-deduped by the CRM backend if re-imported. Add all leads; the CRM dumps duplicates; count only what was actually added.
 
 ---
 
@@ -134,18 +133,18 @@ habit:
 
 ---
 
-## Per-Vertical Lead Counts (current dataset)
+## Per-Vertical Lead Counts (from Tariq's initial run)
 
 | Vertical | Tier | Leads |
 |----------|------|-------|
-| Contracting & Facilities | T1 | (in `leads_enriched.csv`) |
-| Finance & Debt Collection | T1 | (in `leads_enriched.csv`) |
-| Private Clinics (dental) | T1 | (in `leads_enriched.csv`) |
-| Real Estate | T2 | (in `leads_enriched.csv`) |
-| Training Institutes | T2 | (in `leads_enriched.csv`) |
-| **Total** | | **36** |
+| Contracting & Facilities | T1 | (in CRM) |
+| Finance & Debt Collection | T1 | (in CRM) |
+| Private Clinics (dental) | T1 | (in CRM) |
+| Real Estate | T2 | (in CRM) |
+| Training Institutes | T2 | (in CRM) |
+| **Total (Tariq's leads)** | | **36** |
 
-Run `python -c "import pandas as pd; df = pd.read_csv('leads_enriched.csv'); print(df['sector'].value_counts())"` to see exact counts.
+> These counts are from Tariq's initial import (2026-07-06). Current CRM totals are higher because other people add leads too. Query CRM by `leadSource: "Google-Places"` or `createdBy` to get Tariq's subset.
 
 ---
 

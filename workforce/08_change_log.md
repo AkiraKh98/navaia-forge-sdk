@@ -164,10 +164,11 @@
   name search that could hit a similarly-named business), reasons the specific pain from those
   reviews, and **updates the lead in place** (`pain_line`/`pain_date`, preserving every column
   incl. `created_by`), idempotent, ~$0.0004/lead. **Validated on 5 real leads** → feeds `{trigger_line}`.
-- **Handoff prepared** (`workforce/HANDOFF.md`): current state + hard rules + open items + next
-  steps for the next CLI. `START_HERE.md` and `AGENTS.md` now point to it first. Boss directives
-  captured as confirmed: model policy = kimi floor + frontier escalation (pending frontier
-  confirm); dedup + email-send = boss mechanism + tech team (no agent-side dedup, no added cost).
+- **Handoff notes drafted** (intended for `workforce/HANDOFF.md` — not committed as a standalone
+  file; content folded into `AGENTS.md` entry-point section instead). Boss directives captured as
+  confirmed: model policy = kimi floor + frontier escalation (pending frontier confirm); dedup +
+  email-send = boss mechanism + tech team (no agent-side dedup, no added cost). `START_HERE.md`
+  deleted in a later prune (root docs consolidated into `workforce/`).
 
 ## 2026-07-10
 

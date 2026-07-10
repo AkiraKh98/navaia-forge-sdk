@@ -151,23 +151,23 @@ python scripts/fetch_leads.py
 # 3. Clean
 python scripts/step1_clean.py
 
-# 4. Dedup vs CRM
-python scripts/graphql_dedup.py
-
-# 5. Enrich
+# 4. Enrich
 python scripts/enrich_emails.py
 python scripts/fetch_emails_snov.py
 
-# 6. Verify
+# 5. Verify
 python scripts/verify_all_emails.py
 
-# 7. Import
+# 6. Import
 python scripts/import_all_leads.py
 
-# 8. Post-import verify
-python scripts/crosslang_dedup.py
+# 7. Post-import verify
 python scripts/verify_import.py
+
+# 8. Review enrichment (trust-locked)
+python scripts/enrich_reviews.py
 ```
 
-The single source of truth dataset is `leads_enriched.csv` (36 leads, with
-all enrichment + verification columns). All later stages read from this file.
+> **No dedup steps.** The Twenty CRM backend handles duplicate elimination automatically — never run agent-side dedup. The dedup scripts (`graphql_dedup.py`, `crosslang_dedup.py`) are kept as manual one-off reconciliation tools only.
+>
+> **Single source of truth:** Twenty CRM. `leads_enriched.csv` from the initial Phase-1 run is historical reference only.

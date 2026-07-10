@@ -28,14 +28,12 @@ For clear tasks, he proceeds directly to delegation.
 
 Tariq runs the lead-fetch pipeline (see `agents/tariq_sdr_lead_fetcher.md`):
 1. Raw fetch via Google Places API
-2. English-name dedup vs CRM
-3. Email enrichment (website crawl + web search + Snov.io)
-4. Email verification (Snov.io v2)
-5. Bulk import to Twenty CRM
-6. Cross-language dedup
-7. Post-import verify
+2. Email enrichment (website crawl + web search + Snov.io)
+3. Email verification (Snov.io v2)
+4. Bulk import to Twenty CRM
+5. Post-import verify
 
-Leads land in `leads_enriched.csv` + Twenty CRM. Tariq reports back to Ahmed.
+No dedup steps — the Twenty CRM backend handles duplicate elimination automatically. Leads land directly in Twenty CRM. Tariq reports actual-added count back to Ahmed. Tariq only messages Mjeed's leads (`createdBy.name = "Mjeed"`).
 
 ### 4. Ahmed delegates outreach — Lina writes, Tariq sends
 
@@ -49,13 +47,14 @@ Outreach is not an agent; it's a two-step handoff Ahmed orchestrates:
   `{benefit_pair}`, vertical noun). WhatsApp variant is shorter.
 
 **Tariq (SDR) — sends:**
-- Pulls lead + context from Twenty CRM (or `leads_enriched.csv` for Phase 1).
+- Pulls lead + context from Twenty CRM.
 - Applies the §11.5 lead score to prioritize.
 - **Email:** launches a **Snov.io campaign** using the connected **Zoho mailbox**
   (`ops@navaia.sa`) — never Zoho-direct.
 - **WhatsApp:** sends via **Baian** — **cloud-only**, so Ahmed routes the task to the
   cloud runtime; Tariq never sends Baian locally.
 - Logs every send + reply to the Fareegi dashboard.
+- Updates CRM `leadStatus` on send: first email → `"Emailed"`, first WhatsApp → `"WhatsApped"`.
 
 ### 6. Ahmed aggregates outcomes
 
@@ -67,17 +66,27 @@ Ahmed collects:
 
 He updates the task status and surfaces results to the user via the dashboard.
 
-### 7. Replies / inbound signals flow back
+### 7. Replies / inbound signals flow back (CRM is the record)
 
-- Email replies → Zoho Mail → Fareegi dashboard → Ahmed
-- WhatsApp replies → Baian → dashboard → Ahmed
-- Inbound form submissions → CRM → dashboard → Ahmed
+Every inbound signal updates the CRM **first**, then notifies Ahmed:
 
-Ahmed routes follow-ups:
+1. **Email reply** → Zoho Mail → webhook / poll
+   → Ahmed updates CRM: `leadStatus = "Replied"` on the Person, logs reply content
+   → Also logged to Fareegi dashboard
+2. **WhatsApp reply** → Baian → webhook / dashboard
+   → Ahmed updates CRM: `leadStatus = "Replied"` on the Person, logs reply content
+   → Also logged to Fareegi dashboard
+3. **cal.com booking** → cal.com webhook
+   → Ahmed updates CRM: `leadStatus = "Meeting Booked"` on the Person
+   → Also logged to Fareegi dashboard
+
+Ahmed then routes follow-ups based on reply tone:
 - Positive reply → confirm cal.com booking + WhatsApp option
 - Question reply → answer or route to specialist
-- Negative reply → graceful close
-- No reply after +7 → end of cadence
+- Negative reply → graceful close, set `leadStatus = "Closed"`
+- No reply after +7 → end of cadence, set `leadStatus = "Unresponsive"`
+
+> **Further updates are manual only.** No automated status transitions beyond the lifecycle documented in `agents/tariq_sdr_lead_fetcher.md#lead-status-lifecycle`.
 
 ### 8. Follow-up cadence (day 0 / +3 / +7)
 
@@ -93,19 +102,19 @@ Ahmed routes follow-ups:
 ```
 User
   ↓ (assign task)
-Ahmed (GM)
-  ↓ (delegate: find leads)
+Ahmed (GM) [container host — spawns agents]
+  ↓ (spawn: find leads)
 Tariq (SDR)
-  ↓ (leads in CRM + CSV)
+  ↓ (leads in CRM)
 Ahmed (GM)
-  ↓ (delegate: write outreach)
+  ↓ (spawn: write outreach)
 Lina (writes copy)
   ↓ (finished, approved copy)
 Tariq (sends: email via Snov→Zoho; WhatsApp via Baian on cloud)
-  ↓ (sends logged to dashboard)
-  ↓ (replies come back)
+  ↓ (updates CRM leadStatus)
+  ↓ (replies come back → updates CRM first)
 Ahmed (GM)
-  ↓ (route follow-ups)
+  ↓ (route follow-ups, update leadStatus)
 Tariq (send) / Lina (rewrite) / User
 ```
 

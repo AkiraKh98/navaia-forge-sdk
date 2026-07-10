@@ -10,8 +10,8 @@
 | Item | Note |
 |------|------|
 | **Twenty CRM** | Configured locally with token from `.env`. Base URL: `https://crm.navaia.sa`. REST + GraphQL both reachable. |
-| **Twenty CRM dedup (English-name match)** | `scripts/graphql_dedup.py` — 48 raw leads → 36 clean. 12 dups removed by name + domain. |
-| **Twenty CRM cross-language dedup (Arabic ↔ English)** | `scripts/crosslang_dedup.py` — transliteration + domain/phone/address overlap. 0 dups found across all 645 companies. |
+| **Twenty CRM dedup (English-name match)** | `scripts/graphql_dedup.py` — 48 raw leads → 36 clean. 12 dups removed by name + domain. **Historical (one-off)** — CRM backend now handles dedup automatically. |
+| **Twenty CRM cross-language dedup (Arabic ↔ English)** | `scripts/crosslang_dedup.py` — transliteration + domain/phone/address overlap. 0 dups found across all 645 companies. **Historical (one-off)** — CRM backend now handles dedup automatically. |
 | **Bulk import to Twenty CRM** | `scripts/import_all_leads.py` — 35 companies + 35 people created (شركة اتقان العقارية imported separately as test). 0.5s rate limit. |
 | **Email verification pipeline (Snov.io v2)** | `scripts/verify_all_emails.py`. All 15 verified `.sa` emails return `smtp_status: unknown` — Saudi mail servers don't respond to SMTP probes. Treat as "likely valid, unverified at SMTP layer." |
 | **Email enrichment (website crawl + web search)** | `scripts/enrich_emails.py` — homepage + 10 contact paths + DuckDuckGo. Found 4 new emails. |

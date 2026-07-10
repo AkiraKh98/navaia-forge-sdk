@@ -5,7 +5,7 @@
 > — every agent, every instruction, every configuration, every operational
 > decision — so it can be restored locally without needing the live container.
 
-**Snapshot date:** 2026-07-07
+**Snapshot date:** 2026-07-10
 **Workforce name:** NAVAIA Business
 **Workforce IDs:**
 - Local: `8515d24a-6195-4a73-9cd3-37eb02f08693`
@@ -38,7 +38,7 @@ workforce/
 │   ├── rashid_strategy.md             ← Strategy (phased)
 │   └── fahad_account_manager.md       ← Account Manager (phased)
 ├── playbooks/                         ← executor SOPs (exact steps + commands)
-│   ├── lead_pipeline.md               ← fetch → clean → dedup → enrich → verify → import
+│   ├── lead_pipeline.md               ← fetch → enrich → verify → import (no dedup)
 │   ├── email_send_snov.md             ← email outreach (Snov.io → Zoho mailbox)
 │   ├── whatsapp_send_baian.md         ← WhatsApp via Baian (PROVEN 2026-07-07)
 │   └── deploy_and_sync.md             ← stack deploy, runtime, cloud↔local sync
@@ -47,7 +47,9 @@ workforce/
     └── lead_fetch.md
 ```
 
-> **Entry point:** the repo-root `AGENTS.md` points here. Start there.
+> **Entry point:** start with `AGENTS.md` at the repo root — it opens with a project context
+> section (timeline, pipeline, CLI guide). Then continue here for the full agent list, folder
+> layout, and reading order.
 
 > **Note:** outreach is a *capability*, not an agent. Lina writes, Tariq sends
 > (email via Snov.io→Zoho; WhatsApp via Baian, which is **cloud-only**). The former

@@ -64,12 +64,13 @@ Two jobs, both outbound:
 
 ---
 
-## CRM — Twenty CRM (active)
+## CRM — Twenty CRM (active, shared)
 
 - **Base URL:** `https://crm.navaia.sa`
 - **Token:** `TWENTY_TOKEN` in `.env` (header: `Authorization: Bearer <token>`)
 - **REST endpoint:** `/rest/companies` (POST), `/rest/people` (POST with `companyId`)
 - **GraphQL endpoint:** `/graphql` (use for pagination — REST pagination is broken)
+- **CRM is shared** — other people add leads too. Only message leads where `createdBy.name = "Mjeed"`. Do not message leads added by other people.
 
 ### Company schema (exact fields — fill all known, never invent)
 
@@ -96,7 +97,7 @@ phones: { primaryPhoneNumber, primaryPhoneCountryCode, primaryPhoneCallingCode,
 jobTitle: string
 sector: string (same values as company sector)
 companyId: UUID (link to company)
-leadStatus: "Not Contacted"
+leadStatus: "Not Contacted" | "Emailed" | "WhatsApped" | "Replied" | "Meeting Booked" | "Closed" | "Unresponsive"
 leadSource: "Google-Places" | "Overpass-OSM" | "Snov-Enrichment"
 leadScore: integer (0-100)
 decisionMaker: boolean
@@ -111,6 +112,21 @@ createdBy: { source: "AGENT", name: "Mjeed", context: {} }
 - Check existing CRM records before adding to avoid duplicates.
 - All leads must be localized in Riyadh region.
 - `createdBy` is always `{ source: "AGENT", name: "Mjeed", context: {} }`.
+
+### Lead Status Lifecycle
+
+Every status change is written directly to the CRM (`leadStatus` on the Person record). Further updates are manual only — no automated status transitions beyond what's listed below.
+
+| Event | Set `leadStatus` to | By |
+|-------|---------------------|-----|
+| Lead imported | `"Not Contacted"` | Tariq (import script) |
+| First email sent (Touch 1) | `"Emailed"` | Tariq (send script) |
+| First WhatsApp sent (Touch 1) | `"WhatsApped"` | Tariq (send script) |
+| Both email + WhatsApp sent | `"Emailed"` (whichever came first) | Tariq |
+| Lead replies (any channel) | `"Replied"` | Ahmed (on detecting reply) |
+| Meeting booked via cal.com | `"Meeting Booked"` | Ahmed (on detecting booking) |
+| Lead explicitly declines / graceful close sent | `"Closed"` | Ahmed (on close) |
+| No reply after +7 | `"Unresponsive"` | Ahmed (cadence end) |
 
 ---
 
@@ -132,16 +148,15 @@ createdBy: { source: "AGENT", name: "Mjeed", context: {} }
 > fetching, the pipeline uses **direct Python scripts** rather than relying
 > on the agent runtime. The agent orchestrates; the scripts do the work.
 
-1. **Raw fetch** → `leads.csv` (50 leads, first run) via `scripts/fetch_leads.py`
-2. **English-name dedup vs CRM** → `scripts/graphql_dedup.py` → `leads_clean.csv`
-3. **Email enrichment** → `scripts/enrich_emails.py` → `leads_enriched.csv`
-4. **Email verification (Snov.io v2)** → `scripts/verify_all_emails.py`
-5. **Bulk import to CRM** → `scripts/import_all_leads.py`
-6. **Cross-language dedup** → `scripts/crosslang_dedup.py`
-7. **Post-import verify** → `scripts/verify_import.py`
+1. **Raw fetch** → Twenty CRM via `scripts/fetch_leads.py` + `scripts/step1_clean.py`
+2. **Email enrichment** → Twenty CRM via `scripts/enrich_emails.py` + `scripts/fetch_emails_snov.py`
+3. **Email verification (Snov.io v2)** → Twenty CRM via `scripts/verify_all_emails.py`
+4. **Post-import verify** → `scripts/verify_import.py`
 
-**Current dataset:** `leads_enriched.csv` (36 leads) — the single source of truth.
-**Current CRM state:** 645 companies, ~491 contacts (35 from this run + 1 test).
+> **No dedup steps.** The Twenty CRM backend handles duplicate elimination automatically. Never run agent-side dedup — it costs tokens for nothing. The dedup scripts (`graphql_dedup.py`, `crosslang_dedup.py`) are kept as manual one-off reconciliation tools only.
+
+**Current CRM state:** 645 companies, ~491 contacts total. Of those, **36 are from Mjeed's initial Riyadh run** (35 bulk + 1 test). The rest were added by other people — only message Mjeed's leads (where `createdBy.name = "Mjeed"`).
+**Single source of truth:** Twenty CRM. CSV files were a Phase-1 workaround and are no longer an active data source.
 
 ---
 
@@ -216,7 +231,7 @@ templates from Lina, personalizes the per-lead tokens against CRM data, and send
 
 - **Send path:** create/launch a **Snov.io campaign**; the connected **Zoho mailbox**
   (`ops@navaia.sa`) is the sender underneath. **Never call Zoho Mail send directly.**
-- Pull lead + context from Twenty CRM (or `leads_enriched.csv` for Phase 1).
+- Pull lead + context from Twenty CRM — only Mjeed's leads (`createdBy.name = "Mjeed"`).
 - Apply the §11.5 lead score to prioritize sends.
 - Personalize tokens per lead: `{honorific+name}`, `{اسم الشركة}` (vertical noun),
   `{pain_line}`, `{benefit_pair}` — using Lina's template for the lead's vertical.
@@ -283,6 +298,8 @@ Institutes) and store them in Twenty CRM. Never invent data — only record what
 verified from a real source. Use Google Places API as primary, Overpass/OSM as backup,
 Snov.io for email enrichment + verification. Every lead must have at least a phone or
 email, and always store its Google Places place_id.
+IMPORTANT: The Twenty CRM is a SHARED system — other people add leads too. You only
+message leads where `createdBy.name = "Mjeed"`. When counting, filter by `createdBy.name = "Mjeed"`.
 DO NOT check for duplicates yourself — the Twenty CRM backend handles dedup. Add all
 leads; the CRM dumps duplicates. Count ONLY what was ACTUALLY added. When asked for N
 leads, if the added count is below N because the CRM dumped some, fetch and add more until
@@ -296,6 +313,8 @@ and append it to the EXACT lead. (Script: enrich_reviews.py → feeds the outrea
 JOB 2 — SEND: You dispatch outreach. Lina writes the copy; you send it. Never write the
 copy yourself — if you need copy, request it from Lina. Personalize the per-lead tokens
 (honorific+name, company name, pain line, benefit pair) against CRM data, then send:
+CRITICAL: Only message leads where `createdBy.name = "Mjeed"` — never message leads
+added by other people.
 - EMAIL: launch a Snov.io campaign using the connected Zoho mailbox (ops@navaia.sa) as
   the sender. NEVER call Zoho Mail send directly. Cadence day 0/+3/+7, Sun–Thu
   10am–12pm AST, never Fri–Sat. Warmed domain, plain-text cal.com link, no tracking

@@ -96,14 +96,12 @@ avoid double-counting the same underlying event).
 
 ## Implementation Notes (for the scripting model)
 
-1. **Read from `leads_enriched.csv` + Twenty CRM.** Merge on place_id or
-   company_id.
+1. **Read from Twenty CRM.** Query only Mjeed's leads (`createdBy.name = "Mjeed"`) — other people add leads to the CRM too.
 2. **Compute the score** for each lead using the signals above.
 3. **Bucket and sort** by score descending.
 4. **Cap at 100.**
-5. **Output** to `leads_scored.csv` with the score + bucket + signals used.
-6. **Hand off to the outreach pipeline** — Zoho agent reads the scored list
-   and sends in bucket order (Hot → Warm → Cool).
+5. **Output** to memory or a temp file; the outreach pipeline reads from CRM directly.
+6. **Hand off to Tariq** — he reads the scored leads from CRM and sends in bucket order (Hot → Warm → Cool).
 
 ### Pseudocode
 

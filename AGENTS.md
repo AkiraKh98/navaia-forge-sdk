@@ -50,8 +50,9 @@ The `navaia` CLI sometimes enters semi-loop patterns with the model. The exact c
 - For long-running external tasks (API calls, imports), use `run_in_background: true` then poll with the Monitor tool — avoids timeouts that can lead to blocked states.
 
 > Entry point for any agent or LLM working in this repo (the [AGENTS.md](https://agents.md/)
-> open standard). **➤ First read `workforce/README.md`** for the current state, hard rules,
-> and next steps (2026-07-08). Then this file → the source of truth in **`workforce/`**.
+> open standard). **The Project Context section above is your first read** — timeline, pipeline,
+> and CLI survival guide in under 30 seconds. Then continue to `workforce/README.md` for detailed
+> orientation, the agent list, and the full reading order.
 
 ## Project overview
 
