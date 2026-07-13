@@ -18,12 +18,14 @@
 | **Outreach templates (5 verticals × 3 touches)** | `04_outreach_templates.md` — formal Arabic, field vocab, per-vertical compliance, cal.com CTA, 4-line signature. Clean PDF: `NAVAIA_Outreach_Templates.pdf`. |
 | **Outreach — impact numbers** | Confirmed across verticals: cost −40%, profit +30%. Placeholders replaced in templates. |
 | **Lead scoring model** | Designed in `05_lead_scoring_model.md`. Rules-based 0–100 model. Implementation is scripting-model work. |
-| **Runtime setup (claude_max + kimi-k2.6)** | Verified via `scripts/check_runtime.py`. |
+| **Runtime setup (claw_code runtime + kimi-k2.6)** | Verified via `scripts/check_runtime.py`. |
 | **DB init script** | `scripts/setup_db.py` works cross-platform, includes scheduler tables. |
 | **SDK fixes** | JWT auth, DEBUG flag, version sync, doc drift — all resolved. |
 | **Scripts pruned** | `scripts/` reduced from 65 → 29 (deleted all `test_*`, `debug_*`, `inspect_*`, and superseded duplicates). |
 | **Baian (WhatsApp) — VERIFIED LIVE** | Cloud integration **ACTIVE** (`baian.navaia.sa`). Proven end-to-end 2026-07-07: cloud workforce (in `draft`, no activation needed) → Tariq → Baian → Meta template → owner's WhatsApp delivered. Two real messages sent (`meeting_confirmation`, then approved custom `navaia_connectivity_test_v1`). First-contact requires a Meta-**APPROVED** template via `send_template`; new templates approve in ~minutes. |
 | **WhatsApp MJ template set — complete (5/5 verticals)** | 2026-07-10: All 5 option-B Touch-1 templates APPROVED — `navaia_mj_clinics_t1`, `navaia_mj_contracting_t1`, `navaia_mj_realestate_t1`, `navaia_mj_finance_t1_v2`, `navaia_mj_training_t1_v2`. Two hard Meta rules learned: (1) no trailing/leading `{{n}}` — needs fixed text after `{{5}}` + an `example`; (2) 30-day name lock after delete. Script refactored to `cleanup` mode (deletes junk in one shot, no recreate). |
+| **Runtime switched to Kimi** | 2026-07-13: workforce `runtime_mode` set `claude_max → claw_code` so agents run on their configured model. All 7 agents are `moonshotai/kimi-k2.6` (primary + escalation). Under `claude_max` the Claude CLI ignored the Kimi `model_name`; `claw_code` (multi-model CLI) honors it. Applied via `cloud.workforces.update(runtime_mode="claw_code")`, verified by re-fetch. |
+| **Twenty CRM integration URL corrected** | 2026-07-13: the cloud `twenty` integration pointed at `navaia-business.twenty.com` where the workspace token is invalid; re-created pointing at `crm.navaia.sa` (`a3f5ac89-…`). The old misconfigured record can't be removed — see Blocked (integration DELETE/PUT 500). |
 
 ---
 
@@ -31,7 +33,7 @@
 
 | Item | Note | Unblock condition |
 |------|------|-------------------|
-| **Hunter.io record deletion** | Cloud backend returns HTTP 500 on DELETE/PUT. | Retry later or report to Navaia team. |
+| **Integration DELETE/PUT return HTTP 500 (backend bug)** | The cloud `/integrations/{id}` endpoint 500s on both PUT (update) and DELETE — integrations can't be edited or removed via the API; only CREATE works. Re-confirmed 2026-07-13 on Twenty, Telegram, and Hunter records (PATCH→405, PUT→500, DELETE→500). **Consequence — stuck duplicates:** the correct Twenty CRM integration (`crm.navaia.sa`) was re-created, but the old wrong one (`navaia-business.twenty.com`, token invalid there) can't be deleted; a duplicate empty Telegram integration also can't be removed. **Confirmed 2026-07-13:** a read-only CRM probe task fails with `401 WORKSPACE_NOT_FOUND` even though `TWENTY_TOKEN` (a valid `type=API_KEY` token) works directly against `crm.navaia.sa` (REST + GraphQL both 200). So the toolbridge resolves CRM to the **stale wrong `twenty` integration** — agents' in-task CRM tool is broken until it's purged. Direct-API scripts (Telegram bot `mark_whatsapped`, `import_all_leads.py`, `dump_crm.py`) still work, so the pipeline can run via scripts meanwhile. | Navaia fixes PUT/DELETE on `/integrations`, or purges these stale rows directly in the DB: `twenty 5961b579-e629-4483-a132-a5a8b40c095a` and `telegram f3369460-a43e-45e2-a34c-291f5f31254e`. |
 
 ---
 

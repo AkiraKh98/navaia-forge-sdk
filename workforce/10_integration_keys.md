@@ -33,12 +33,12 @@ You have two ways. Pick one.
 
 ### Way 1 — API (or let an AI do it for you)
 
-Base URL: `https://fareegi.167-233-28-183.sslip.io/api/v1`
+Base URL: `https://fareegi.navaia.sa/api/v1`
 Auth header on every call: `x-api-key: YOUR_API_KEY` (create one in
 Settings → API Keys).
 
 ```bash
-curl -X POST https://fareegi.167-233-28-183.sslip.io/api/v1/integrations \
+curl -X POST https://fareegi.navaia.sa/api/v1/integrations \
   -H "x-api-key: YOUR_API_KEY" -H "Content-Type: application/json" \
   -d '{
         "workforce_id": "YOUR_WORKFORCE_ID",
@@ -55,7 +55,7 @@ Repeat with:
 Check what's connected (secrets come back redacted):
 
 ```bash
-curl "https://fareegi.167-233-28-183.sslip.io/api/v1/integrations?workforce_id=YOUR_WORKFORCE_ID" \
+curl "https://fareegi.navaia.sa/api/v1/integrations?workforce_id=YOUR_WORKFORCE_ID" \
   -H "x-api-key: YOUR_API_KEY"
 ```
 
@@ -94,7 +94,7 @@ You can paste the Way 1 instructions into any AI model or Navaia Code and say:
 | `SNOV_USER_ID` | Snov.io enrichment | Snov.io |
 | `SNOV_USER_SECRET` | Snov.io enrichment | Snov.io |
 | `PLACES_API` | Lead generation | Google Cloud Console |
-| `BAIAN_TOKEN` | WhatsApp outreach (Blocked) | Navaia team |
+| `BAIAN_TOKEN` | WhatsApp outreach (Active — cloud-only) | Navaia team |
 
 > **Container env var caveat:** only `OPENROUTER_API_KEY` is passed to the
 > container by default. Other `.env` vars (`PLACES_API`, `TWENTY_TOKEN`,

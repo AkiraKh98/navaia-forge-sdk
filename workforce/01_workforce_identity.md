@@ -47,13 +47,13 @@ task assigned on cloud flows down to local execution.
 ### Dashboard URLs
 
 - **Cloud dashboard:** `https://fareegi.navaia.sa`
-- **API base:** `https://fareegi.167-233-28-183.sslip.io/api/v1`
+- **API base:** `https://fareegi.navaia.sa/api/v1`
 - **Auth header:** `x-api-key: YOUR_API_KEY` (create one in Settings → API Keys)
 
 ### Integrations API (example)
 
 ```bash
-curl -X POST https://fareegi.167-233-28-183.sslip.io/api/v1/integrations \
+curl -X POST https://fareegi.navaia.sa/api/v1/integrations \
   -H "x-api-key: YOUR_API_KEY" -H "Content-Type: application/json" \
   -d '{
         "workforce_id": "YOUR_WORKFORCE_ID",
