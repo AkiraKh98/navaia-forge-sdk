@@ -15,7 +15,7 @@
 | Operator chat | `TELEGRAM_CHAT_ID = 7172651886` — the bot only listens to / talks to this one chat. |
 | Control code | `scripts/telegram_workforce_bot.py` — a local process bridging Telegram ⇄ the cloud API. This is the real control surface. |
 | Cloud APIs it drives | `agents.list` (7 agents), `tasks` (create/get/list/approve/reject — 50 tasks, one currently `waiting_question`), `conversations` (create/list/messages/send_message — 7 convs). All responding. |
-| Runtime | `runtime_mode = claw_code` → tasks you assign run on **Kimi K2.6** (per-agent `model_name`). |
+| Runtime | `runtime_mode = navaia_code` → tasks you assign run on **Kimi K2.6** (per-agent `model_name`). |
 
 There are **two possible Telegram implementations** — you are using the first:
 

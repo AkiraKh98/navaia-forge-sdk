@@ -74,4 +74,4 @@ lands.
   bot's lead-status updates) call `crm.navaia.sa` with the token directly and succeed. Only the
   **agents' in-task CRM tool** (via the toolbridge integration) is affected.
 - All 7 agents, tasks, conversations, and the other integrations (Baian, Snov, Zoho, Telegram) are
-  healthy. Runtime is `claw_code` (Kimi).
+  healthy. Runtime is `navaia_code` (Kimi).
