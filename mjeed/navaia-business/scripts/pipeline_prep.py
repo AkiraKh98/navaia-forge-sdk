@@ -236,6 +236,35 @@ def _crm_h() -> dict:
             "Content-Type": "application/json"}
 
 
+def crm_people_fields(node_fields: str) -> list[dict]:
+    """Every one of Mjeed's people, with WHATEVER node fields you ask for. Always paginated.
+
+    Exists because ad-hoc `people(first:200)` queries silently truncate: the CRM holds ~912
+    people, so an unpaginated read returns an arbitrary slice and omits the rest without any
+    error. On 2026-07-20 that produced two confident false reports of data loss — records
+    that were present the whole time simply were not in the sample. Reach for this instead of
+    hand-writing a query, so the paging is not optional.
+
+        crm_people_fields("id name{firstName lastName} jobTitle emails{primaryEmail}")
+    """
+    query = ("query P($first:Int!,$after:String){people(first:$first,after:$after){"
+             "edges{node{" + node_fields + " createdBy{name}}}"
+             "pageInfo{hasNextPage endCursor}}}")
+    rows, cursor = [], None
+    while True:
+        variables: dict = {"first": 200}
+        if cursor:
+            variables["after"] = cursor
+        page = httpx.post(f"{CRM_BASE}/graphql", headers=_crm_h(),
+                          json={"query": query, "variables": variables},
+                          timeout=40).json()["data"]["people"]
+        rows += [e["node"] for e in page["edges"]]
+        if not page["pageInfo"]["hasNextPage"]:
+            break
+        cursor = page["pageInfo"]["endCursor"]
+    return [r for r in rows if "mjeed" in ((r.get("createdBy") or {}).get("name") or "").lower()]
+
+
 def _crm_people() -> list[dict]:
     """All of Mjeed's people with their company (GraphQL — REST paging is broken)."""
     q = ("query P($first:Int!,$after:String){people(first:$first,after:$after){"
