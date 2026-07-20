@@ -36,8 +36,46 @@ import httpx
 import nav_env
 
 CRM = nav_env.crm_base()
-CREATED_BY = {"source": "AGENT", "name": "Mjeed using ", "context": {}}
+# createdBy.name must contain "Mjeed" (the CRM hard rule keys ownership on that). The old
+# value "Mjeed using " carried a trailing fragment; the agent tasks use a clean "Mjeed".
+CREATED_BY = {"source": "AGENT", "name": "Mjeed", "context": {}}
 ACTIVE = ["Real Estate", "Contracting & Facilities", "Training Institutes"]
+
+
+def _phone_key(p: str) -> str:
+    """Last 9 digits of a phone — comparable across +966 / 0 / bare-5 spellings."""
+    return re.sub(r"\D", "", p or "")[-9:]
+
+
+def existing_crm_phone_keys() -> set[str]:
+    """Phone keys already on Mjeed's CRM people, via the PAGINATED helper.
+
+    Dedup must see every one of the ~900 people; an unpaginated read silently truncates and
+    would let the migration re-create leads that are already there (import_selected_leads has
+    no upsert — a duplicate here is a duplicate in the shared CRM). Reuses
+    pipeline_prep.crm_people_fields so the paging is not optional.
+    """
+    import pipeline_prep as prep
+    keys = set()
+    for person in prep.crm_people_fields("id phones{primaryPhoneNumber}"):
+        num = ((person.get("phones") or {}).get("primaryPhoneNumber") or "").strip()
+        if _phone_key(num):
+            keys.add(_phone_key(num))
+    return keys
+
+
+def group_pool_by_vertical(pool: list[dict]) -> dict[str, list[dict]]:
+    """The compact flat scrape list -> {vertical: [lead]} for ACTIVE verticals only.
+
+    Leads already marked imported_crm (from a prior migration run) are skipped, so the
+    migration is idempotent and drains the laptop pool run over run.
+    """
+    grouped: dict[str, list[dict]] = {v: [] for v in ACTIVE}
+    for l in pool:
+        sector = l.get("sector_guess")
+        if sector in grouped and not l.get("imported_crm"):
+            grouped[sector].append(l)
+    return grouped
 
 
 def headers() -> dict:

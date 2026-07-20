@@ -25,6 +25,7 @@ Usage:
 from __future__ import annotations
 
 import io
+import json
 import os
 import re
 import sys
@@ -160,6 +161,34 @@ def _nearest_name(text: str, at: int, role_span: tuple[int, int]) -> tuple[str, 
     return best, best_dist
 
 
+# Saudi MOBILE shape. A person's direct number is almost always a mobile; the company's main
+# line is a landline (011…) or a 920/800 unified number — so a mobile sitting next to a named
+# person is very likely that person's, which is exactly the "person phone first" rule. The
+# company phone is the documented fallback, applied at import, never guessed here.
+# 5 + 8 digits, separators optional between any pair — page groupings vary (5x xxx xxxx,
+# 55 123 4567, 5xxxxxxxx), so a fixed grouping misses real numbers. Landlines/920 never start
+# on a 5 after the prefix, so this stays mobile-only.
+_PHONE_RE = re.compile(r"(?:\+?966[\s\-]?|00966[\s\-]?|0)?5(?:[\s\-]?\d){8}")
+_PHONE_WINDOW = 70   # tight: a number far from the name is the switchboard, not the person
+
+
+def _phone_near(text: str, at: int) -> str:
+    """A Saudi MOBILE adjacent to the person, normalized to +9665xxxxxxxx, or ''.
+
+    Deliberately narrow: only a mobile, only close to the name. A landline or a distant number
+    is the company's and belongs in the company-fallback slot, not on the person.
+    """
+    lo, hi = max(0, at - _PHONE_WINDOW), min(len(text), at + _PHONE_WINDOW)
+    for m in _PHONE_RE.finditer(text[lo:hi]):
+        digits = re.sub(r"\D", "", m.group(0))
+        if digits.startswith("966"):
+            digits = digits[3:]
+        digits = digits.lstrip("0")
+        if len(digits) == 9 and digits.startswith("5"):
+            return "+966" + digits
+    return ""
+
+
 def _email_near(text: str, at: int, name: str) -> str:
     """A personal address adjacent to the name, or ''. NEVER a synthesised pattern.
 
@@ -203,6 +232,7 @@ def extract(markdown: str) -> list[dict]:
                 "name": name,
                 "role": role,
                 "email": _email_near(text, m.start(), name),
+                "phone": _phone_near(text, m.start()),
                 "evidence": text[start:end].strip(),
                 "tier": tier,
             })
@@ -216,8 +246,13 @@ def from_pages(pages: dict) -> list[dict]:
     for markdown in pages.values():
         for person in extract(markdown):
             key = person["name"].lower()
-            if key not in people or (not people[key]["email"] and person["email"]):
+            if key not in people:
                 people[key] = person
+            else:
+                # keep the richest record: fill email/phone from a later page if this one has it
+                for field in ("email", "phone"):
+                    if not people[key].get(field) and person.get(field):
+                        people[key][field] = person[field]
     return sorted(people.values(), key=lambda p: p["tier"])
 
 
@@ -233,6 +268,16 @@ _SELFTEST = [
      "خالد الشمري", "honorific stripped, personal email kept"),
 ]
 
+# (text, expected_phone, why) — person-phone extraction, checked separately from the name cases.
+_PHONE_SELFTEST = [
+    ("الرئيس التنفيذي الأستاذ سالم المطيري جوال 0501234567 للتواصل المباشر",
+     "+966501234567", "mobile next to the named person -> theirs"),
+    ("المدير التنفيذي الأستاذ فهد العتيبي، هاتف المكتب 011 456 7890",
+     "", "landline near the person is the company's, not a person mobile"),
+    ("Managing Director Omar Baeshen  +966 55 123 4567",
+     "+966551234567", "spaced +966 mobile normalized"),
+]
+
 
 def _self_test() -> None:
     ok = 0
@@ -244,15 +289,94 @@ def _self_test() -> None:
         print(f"  {'PASS' if good else 'FAIL'}  {why}")
         print(f"        expected {expect_name!r}, got {name!r}"
               + (f" email={got[0]['email']!r}" if got else ""))
-    print(f"\n{ok}/{len(_SELFTEST)} passed")
+    print(f"\n{ok}/{len(_SELFTEST)} name cases passed")
+
+    pok = 0
+    for text, expect_phone, why in _PHONE_SELFTEST:
+        got = extract(text)
+        phone = got[0]["phone"] if got else ""
+        good = (phone == expect_phone)
+        pok += good
+        print(f"  {'PASS' if good else 'FAIL'}  {why}")
+        print(f"        expected {expect_phone!r}, got {phone!r}")
+    print(f"\n{pok}/{len(_PHONE_SELFTEST)} phone cases passed")
+
+
+# The enriched pool carries named people (their phones/emails) and must never be committed to
+# the public-mirrored repo, so it lives in its own gitignored file, separate from the tracked
+# scrape pool it is built from.
+ENRICHED_POOL = "leads_enriched_people.json"
+
+
+def enrich_pool(pool_path: str, out_path: str | None = None,
+                limit: int | None = None, budget: int = 5) -> list[dict]:
+    """Attach the best named person to each lead in the compact scrape pool.
+
+    Person-first, company-fallback: writes lead["person"] = {name, role, email, phone} when a
+    named person is found on the lead's own site (phone may be "" — mobiles are rarely public).
+    lead["phone"] (the company number) is left untouched as the fallback. Idempotent: a lead
+    that already has a "person" key is skipped, so the run resumes after an interruption. Writes
+    to out_path (a gitignored PII file, NOT back into the tracked pool) after each lead, so a
+    long scrape is never lost and no named-individual data lands in the tracked source.
+    """
+    import polite_fetch
+    if out_path is None:
+        out_path = os.path.join(os.path.dirname(os.path.abspath(pool_path)), ENRICHED_POOL)
+    # Resume from the enriched file if a prior run left one; else start from the tracked pool.
+    src = out_path if os.path.exists(out_path) else pool_path
+    with io.open(src, encoding="utf-8") as f:
+        pool = json.load(f)
+    cache = polite_fetch.PageCache()
+    attempted = found = 0
+    for lead in pool:
+        if "person" in lead:                       # already enriched on a prior run
+            continue
+        site = (lead.get("website") or "").strip()
+        if not site:
+            lead["person"] = {}                    # no site -> nothing to fetch; mark as done
+            continue
+        if not site.startswith("http"):
+            site = "https://" + site
+        base = site.rstrip("/") + "/"
+        try:
+            pages = cache.get_many(base, [""] + PEOPLE_PATHS, budget=budget)
+            people = from_pages(pages)
+        except Exception as e:                      # one bad site must not sink the batch
+            lead["person"] = {}
+            lead["person_error"] = str(e)[:120]
+            people = []
+        best = people[0] if people else None
+        lead["person"] = ({"name": best["name"], "role": best["role"],
+                           "email": best.get("email", ""), "phone": best.get("phone", "")}
+                          if best else {})
+        attempted += 1
+        if best:
+            found += 1
+            print(f"  + {best['name'][:26]:26} {best.get('phone') or '-':14} "
+                  f"{best.get('email') or '-'}  <- {lead['name'][:30]}")
+        with io.open(out_path, "w", encoding="utf-8") as f:
+            json.dump(pool, f, ensure_ascii=False, indent=1)
+        if limit and attempted >= limit:
+            break
+    print(f"\nenriched {attempted} site-bearing leads; found a named person for {found}")
+    print(f"written to {out_path} (gitignored)")
+    return pool
 
 
 def main() -> None:
     if "--self-test" in sys.argv:
         _self_test()
         return
+    if "--pool" in sys.argv:
+        i = sys.argv.index("--pool")
+        pool_path = sys.argv[i + 1]
+        limit = None
+        if "--limit" in sys.argv:
+            limit = int(sys.argv[sys.argv.index("--limit") + 1])
+        enrich_pool(pool_path, limit=limit)
+        return
     if len(sys.argv) < 2:
-        raise SystemExit("usage: people_facts.py <url> | --self-test")
+        raise SystemExit("usage: people_facts.py <url> | --pool <leads.json> [--limit N] | --self-test")
 
     import polite_fetch
     site = sys.argv[1]
@@ -267,7 +391,8 @@ def main() -> None:
         print("no named people published on this site")
         return
     for p in people:
-        print(f"  T{p['tier']} {p['name'][:28]:28} {p['role'][:34]:34} {p['email'] or '-'}")
+        print(f"  T{p['tier']} {p['name'][:26]:26} {p['role'][:30]:30} "
+              f"{p['email'] or '-':28} {p.get('phone') or '-'}")
         print(f"      …{p['evidence'][:110]}…")
 
 

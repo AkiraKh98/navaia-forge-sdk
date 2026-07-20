@@ -58,3 +58,6 @@ prospects.json
 contacts.json
 company_size.json
 discover_state.json
+
+# migration working file with named-person PII
+leads_enriched_people.json

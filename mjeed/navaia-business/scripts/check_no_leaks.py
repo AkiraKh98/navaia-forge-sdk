@@ -78,6 +78,7 @@ _CONSUMER_MAIL = re.compile(
 # Files that must never be committed anywhere.
 _FORBIDDEN_PATHS = re.compile(
     r"(prospects\.json|contacts\.json|company_size\.json|leads_enriched\.csv|"
+    r"leads_enriched_people\.json|"
     # .env.example is a committed template of placeholder values — every repo here allows it
     # explicitly (`!.env.example`). Flagging it made the full scan fail on a file that is
     # supposed to be there, and a check that always fires gets bypassed.
