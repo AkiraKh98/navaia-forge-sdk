@@ -114,6 +114,18 @@ def _git(*args: str) -> str:
         return ""
 
 
+def _added_lines(diff: str) -> str:
+    """Only the lines a diff ADDS.
+
+    A raw diff also carries every removed line, so the commit that DELETES a leaked secret
+    trips the scanner on the secret it is removing — the fix for a leak becomes unpushable
+    and the only way out is --no-verify, which disables the whole gate. Removing a secret is
+    never a leak; adding one always is.
+    """
+    return "\n".join(l[1:] for l in diff.splitlines()
+                     if l.startswith("+") and not l.startswith("+++"))
+
+
 def scan_text(label: str, text: str, names: set[str], creds_only: bool = False) -> list[str]:
     hits = []
     for what, pattern in _SECRETS:
@@ -165,7 +177,7 @@ def main() -> None:
         for path in (_git("diff", "--cached", "--name-only") or "").splitlines():
             if _FORBIDDEN_PATHS.search(path):
                 hits.append(f"STAGED file that must never be committed: {path}")
-        hits += scan_text("diff", diff, names)
+        hits += scan_text("diff", _added_lines(diff), names)
 
     if hits:
         print("REFUSING — real data or credentials found:\n")
