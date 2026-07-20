@@ -19,6 +19,7 @@ import os
 import re
 
 CLOUD_BASE_URL = "https://fareegi.navaia.sa"
+CLOUD_CRM_URL = "https://crm.navaia.sa"  # Twenty CRM, the shared production instance
 _DEFAULT_WORKFORCE_ID = "131bb52f-e5eb-44ad-8134-03dc6908b485"  # production NAVAIA Business
 _ENV_PATH = os.path.join(os.path.dirname(__file__), "..", ".env")
 
@@ -39,6 +40,15 @@ def env(key: str, default: str | None = None) -> str | None:
 def base_url() -> str:
     """The NavaiaForge backend all acting scripts target (cloud by default)."""
     return env("NAVAIA_BASE_URL", CLOUD_BASE_URL)
+
+
+def crm_base() -> str:
+    """The Twenty CRM instance all acting scripts read/write (cloud by default).
+
+    Was hardcoded as a literal in a dozen scripts; override with NAVAIA_CRM_URL
+    (env or .env) so a local/staging CRM can be targeted without editing each one.
+    """
+    return env("NAVAIA_CRM_URL", CLOUD_CRM_URL)
 
 
 # The workforce all acting scripts target. Override with NAVAIA_WORKFORCE_ID

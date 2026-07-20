@@ -22,6 +22,7 @@ Usage:
     python scripts/enrich_reviews.py --in leads_enriched.csv --limit 10 --no-crm
 """
 from __future__ import annotations
+import nav_env
 
 import argparse
 import csv
@@ -108,7 +109,7 @@ def derive_pain(company: str, reviews: list[str], key: str) -> str:
 def update_lead_by_place_id(place_id: str, pain: str, pain_date: str, token: str) -> bool:
     """Update a lead by place_id using PATCH, preserving createdBy. Returns True if successful."""
     import httpx
-    base_url = "https://crm.navaia.sa"
+    base_url = nav_env.crm_base()
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
     
     # First, get the current lead data to preserve createdBy

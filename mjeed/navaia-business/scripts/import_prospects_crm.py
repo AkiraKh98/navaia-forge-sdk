@@ -25,6 +25,7 @@ Usage:
     python scripts/import_prospects_crm.py
 """
 from __future__ import annotations
+import nav_env
 
 import argparse
 import io
@@ -45,7 +46,7 @@ from reveal_prospect_emails import tier
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 PROSPECTS = os.path.join(ROOT, "prospects.json")
 CONTACTS = os.path.join(ROOT, "contacts.json")
-CRM = "https://crm.navaia.sa"
+CRM = nav_env.crm_base()
 CREATED_BY = {"source": "AGENT", "name": "Mjeed using ", "context": {}}
 
 # Role mailboxes — reaching one of these is reaching a reception desk, not a person, so a

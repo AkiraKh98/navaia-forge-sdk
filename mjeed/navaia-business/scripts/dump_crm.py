@@ -1,12 +1,17 @@
 import sys, io, re, json
+import nav_env
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
+import os
+
 import httpx
 
-env_content = open('C:/Users/aabbo/navaia-business-workforce/.env').read()
-token = re.search(r'TWENTY_TOKEN=(.+)', env_content).group(1).strip()
-base_url = "https://crm.navaia.sa"
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+token = nav_env.env("TWENTY_TOKEN")
+if not token:
+    raise SystemExit("TWENTY_TOKEN not found in environment or .env")
+base_url = nav_env.crm_base()
 
 headers = {
     "Authorization": f"Bearer {token}",
@@ -93,7 +98,8 @@ existing = {
     "company_names": sorted(list(existing_company_names)),
     "domains": sorted(list(existing_domains)),
 }
-with open("C:/Users/aabbo/navaia-business-workforce/scripts/existing_crm_data.json", "w", encoding="utf-8") as f:
+_out = os.path.join(_ROOT, "scripts", "existing_crm_data.json")
+with open(_out, "w", encoding="utf-8") as f:
     json.dump(existing, f, indent=2, ensure_ascii=False)
-print(f"\nSaved existing CRM data to scripts/existing_crm_data.json")
+print(f"\nSaved existing CRM data to {_out}")
 print(f"  {len(existing_emails)} emails, {len(existing_names)} names, {len(existing_company_names)} companies, {len(existing_domains)} domains")

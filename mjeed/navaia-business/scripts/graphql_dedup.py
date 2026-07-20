@@ -1,4 +1,5 @@
 import sys, io, re, json, csv, time
+import nav_env
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
@@ -6,7 +7,7 @@ import httpx
 
 env_content = open('C:/Users/aabbo/navaia-forge-sdk/.env').read()
 token = re.search(r'TWENTY_TOKEN=(.+)', env_content).group(1).strip()
-base_url = "https://crm.navaia.sa"
+base_url = nav_env.crm_base()
 
 headers = {
     "Authorization": f"Bearer {token}",

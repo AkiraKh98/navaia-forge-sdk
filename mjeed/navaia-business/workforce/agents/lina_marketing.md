@@ -183,7 +183,7 @@ CRITICAL RULES:
 | `{{n}}` | Filled at send time with | Notes |
 |---------|--------------------------|-------|
 | `{{1}}` | `{honorific+name}` | e.g. حضرة الدكتور فلان / الأستاذ فلان |
-| `{{2}}` | Lina's **coupled pain→solution block** | Option B (`lina_compose.py`): the lead's pain + the exact NAVAIA solution — grounded in `enrich_reviews.py` when a specific pain matches, else the vertical's general pair. **Must name the automation** (…تُؤتمت/نُؤتمت — the WhatsApp fixed text can't carry it, so `{{2}}` must) and **must NOT cite reviews** (state the pain unattributed, never "لاحظت أن مراجعيكم ذكروا") |
+| `{{2}}` | Lina's **coupled pain→solution block** | Option B (`lina_compose.py`): the lead's pain + the exact NAVAIA solution — grounded in `enrich_reviews.py` when a specific pain matches, else the vertical's general pair. **Must name the automation** (…تتولّى — the WhatsApp fixed text can't carry it, so `{{2}}` must; the coined `نُؤتمت`/`تُؤتمت` were rejected by the operator and must never be used) and **must NOT cite reviews** (state the pain unattributed, never "لاحظت أن مراجعيكم ذكروا") |
 | `{{3}}` | Business name | `{اسم العيادة}` / `{اسم الشركة}` / `{اسم المعهد}` per vertical |
 | `{{4}}` | cal.com link | `https://cal.com/abdulmajeed-alwardi` : renders as clickable link |
 | `{{5}}` | Sender name | `عبدالمجيد الوردي` (immediately followed by the template's fixed closing, e.g. `شاكراً لكم`) |
@@ -320,7 +320,7 @@ Every email follows the inbound doctrine — it keeps the mail human, not mail-m
 - حلول (solutions), never منصّة; frame as "works alongside your team, no extra load"
   (تعمل إلى جانبكم دون عبء). No AI tells, no government-letter clichés.
 - NAME THE AUTOMATION in every message, both channels: the solution is smart automation
-  (حلول ذكية تُؤتمت…) — said at least once per email, and inside {{2}} for WhatsApp (the
+  (حلول ذكية تتولّى…) — said at least once per email, and inside {{2}} for WhatsApp (the
   Meta-locked fixed text can't carry it). NAVAIA must never be mistaken for an agency,
   call center, or manpower service.
 - NEVER CITE REVIEWS: review evidence is internal — it only picks which pain to lead with.

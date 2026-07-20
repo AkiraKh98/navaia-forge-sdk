@@ -37,7 +37,7 @@ import nav_env
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 TEMPLATES_MD = os.path.join(ROOT, "workforce", "04_outreach_templates.md")
 SCRAPE_POOL = os.path.join(ROOT, "leads_scraped_compact.json")
-CRM_BASE = "https://crm.navaia.sa"
+CRM_BASE = nav_env.crm_base()
 SNOV_API = "https://api.snov.io"
 
 

@@ -85,7 +85,8 @@ def templates_block(verticals: list[str]) -> str:
 - {lina_pain} / {{2}}: LINA derives the lead's pain from its pain_hints when they map to a
   solvable pain in the vertical; otherwise the vertical's GENERAL pain. For WhatsApp {{2}} it
   is the coupled pain→solution block; it must read naturally in the sentence, and it MUST
-  name the automation (…نُؤتمت / حلول ذكية تُؤتمت) — the Meta-locked fixed text can't.
+  name the automation (…حلول ذكية تتولّى) — the Meta-locked fixed text can't. The coined
+  نُؤتمت/تُؤتمت were rejected by the operator; never reintroduce them.
 - NEVER CITE REVIEWS in any output: pain_hints only PICK the pain. State it as a known,
   fixable pain with no attribution — never "لاحظت أن مراجعيكم ذكروا", never تقييمات/مراجعات,
   nothing implying we read feedback about them, even when the pain is org-specific.

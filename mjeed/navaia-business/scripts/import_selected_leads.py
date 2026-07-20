@@ -35,7 +35,7 @@ import httpx
 
 import nav_env
 
-CRM = "https://crm.navaia.sa"
+CRM = nav_env.crm_base()
 CREATED_BY = {"source": "AGENT", "name": "Mjeed using ", "context": {}}
 ACTIVE = ["Real Estate", "Contracting & Facilities", "Training Institutes"]
 

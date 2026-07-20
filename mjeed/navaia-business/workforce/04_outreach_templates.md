@@ -139,7 +139,7 @@ appointment covers the monthly cost. Benefit pair: profit +30% and cost −40%. 
 السلام عليكم ورحمة الله وبركاته،
 {honorific+name}، تحية طيبة،
 
-{trigger_line}عوداً على رسالتي، ساعدنا عياداتٍ أخرى تعاني من {lina_pain}، فكان الأثر: أرباحها أعلى بنسبة 30% وتكاليفها أقل بنسبة 40%.
+{trigger_line} عوداً على رسالتي، ساعدنا عياداتٍ أخرى تعاني من {lina_pain}، فكان الأثر: أرباحها أعلى بنسبة 30% وتكاليفها أقل بنسبة 40%.
 
 نڤايا تعمل إلى جانبكم بحلولٍ ذكية تتولّى هذا الجانب، فلا يضيع من وقت فريقكم ما كان للمراجع الحاضر أمامهم.
 
@@ -192,7 +192,7 @@ Value = a won contract. Benefit pair: profit +30% and cost −40%. Compliance: P
 السلام عليكم ورحمة الله وبركاته،
 {honorific+name}، تحية طيبة،
 
-{trigger_line}عوداً على رسالتي، ساعدنا شركاتٍ أخرى تعاني من {lina_pain}، فكان الأثر: أرباحها أعلى بنسبة 30% وتكاليفها أقل بنسبة 40%.
+{trigger_line} عوداً على رسالتي، ساعدنا شركاتٍ أخرى تعاني من {lina_pain}، فكان الأثر: أرباحها أعلى بنسبة 30% وتكاليفها أقل بنسبة 40%.
 
 نڤايا تعمل إلى جانبكم بحلولٍ ذكية تتولّى هذا الجانب، فلا يبقى عرضٌ لكم معلّقاً ولا عطاءٌ دون متابعة.
 
@@ -246,7 +246,7 @@ collected) and cost −40%. Compliance: **SAMA/البنك المركزي** + PDP
 السلام عليكم ورحمة الله وبركاته،
 {honorific+name}، تحية طيبة،
 
-{trigger_line}عوداً على رسالتي، ساعدنا مكاتبَ أخرى تعاني من {lina_pain}، فكان الأثر: تحصيلها أعلى بنسبة 30% وتكاليفها أقل بنسبة 40%.
+{trigger_line} عوداً على رسالتي، ساعدنا مكاتبَ أخرى تعاني من {lina_pain}، فكان الأثر: تحصيلها أعلى بنسبة 30% وتكاليفها أقل بنسبة 40%.
 
 نڤايا تعمل إلى جانبكم بحلولٍ ذكية تتولّى هذا الجانب ووفق أنظمة ساما، فيبقى كل متعثّرٍ لكم تحت المتابعة حتى السداد.
 
@@ -300,7 +300,7 @@ Compliance: PDPL + الأنظمة العقارية (REGA).
 السلام عليكم ورحمة الله وبركاته،
 {honorific+name}، تحية طيبة،
 
-{trigger_line}عوداً على رسالتي، ساعدنا مكاتبَ أخرى تعاني من {lina_pain}، فكان الأثر: أرباحها أعلى بنسبة 30% وتكاليفها أقل بنسبة 40%.
+{trigger_line} عوداً على رسالتي، ساعدنا مكاتبَ أخرى تعاني من {lina_pain}، فكان الأثر: أرباحها أعلى بنسبة 30% وتكاليفها أقل بنسبة 40%.
 
 نڤايا تعمل إلى جانبكم بحلولٍ ذكية تتولّى هذا الجانب، فلا تتأخّر دفعةٌ لكم ولا يبقى مستأجرٌ دون متابعة.
 
@@ -354,7 +354,7 @@ Compliance: PDPL + أنظمة التدريب (TVTC).
 السلام عليكم ورحمة الله وبركاته،
 {honorific+name}، تحية طيبة،
 
-{trigger_line}عوداً على رسالتي، ساعدنا معاهدَ أخرى تعاني من {lina_pain}، فكان الأثر: تسجيلاتها أعلى بنسبة 30% وتكاليفها أقل بنسبة 40%.
+{trigger_line} عوداً على رسالتي، ساعدنا معاهدَ أخرى تعاني من {lina_pain}، فكان الأثر: تسجيلاتها أعلى بنسبة 30% وتكاليفها أقل بنسبة 40%.
 
 نڤايا تعمل إلى جانبكم بحلولٍ ذكية تتولّى هذا الجانب، فلا يتوقّف متدرّبٌ لكم في منتصف تسجيله دون متابعة.
 
@@ -422,7 +422,7 @@ Check cal.com first : they may have booked from the link. Then pick:
 | `{{n}}` | Filled at send time with | Notes |
 |---------|--------------------------|-------|
 | `{{1}}` | `{honorific+name}` | e.g. حضرة الدكتور فلان / الأستاذ فلان |
-| `{{2}}` | Lina's **coupled pain→solution block** | Option B (`lina_compose.py`): the lead's pain + the exact NAVAIA solution — grounded in `enrich_reviews.py` when a specific pain matches, else the vertical's general pair. **Must name the automation** (…تتولّى/نُؤتمت — the WhatsApp fixed text can't carry it, so `{{2}}` must) and **must NOT cite reviews** (state the pain unattributed, never "لاحظت أن مراجعيكم ذكروا") |
+| `{{2}}` | Lina's **coupled pain→solution block** | Option B (`lina_compose.py`): the lead's pain + the exact NAVAIA solution — grounded in `enrich_reviews.py` when a specific pain matches, else the vertical's general pair. **Must name the automation** (…تتولّى — the WhatsApp fixed text can't carry it, so `{{2}}` must; the coined `نُؤتمت` was rejected by the operator and must never be used) and **must NOT cite reviews** (state the pain unattributed, never "لاحظت أن مراجعيكم ذكروا") |
 | `{{3}}` | Business name | `{اسم العيادة}` / `{اسم الشركة}` / `{اسم المعهد}` per vertical |
 | `{{4}}` | cal.com link | `https://cal.com/abdulmajeed-alwardi` : renders as clickable link |
 | `{{5}}` | Sender name | `عبدالمجيد الوردي` (immediately followed by the template's fixed closing, e.g. `شاكراً لكم`) |

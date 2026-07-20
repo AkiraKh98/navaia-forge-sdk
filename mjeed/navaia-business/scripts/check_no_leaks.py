@@ -34,7 +34,26 @@ import re
 import subprocess
 import sys
 
-ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+def _repo_root() -> str:
+    """The git repo this is being run against, not the one this file lives in.
+
+    The same scanner is deployed inside the public SDK repo at a different depth
+    (mjeed/navaia-business/scripts/), where `__file__/..` is NOT the repo root — so
+    `git ls-files` and the paths it returns would disagree and the scan would silently
+    check nothing. Asking git keeps the two in step wherever the file is checked out.
+    """
+    try:
+        out = subprocess.run(["git", "rev-parse", "--show-toplevel"],
+                             cwd=os.path.dirname(os.path.abspath(__file__)),
+                             capture_output=True, text=True, encoding="utf-8", errors="replace")
+        if out.returncode == 0 and out.stdout.strip():
+            return out.stdout.strip()
+    except OSError:
+        pass
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+
+
+ROOT = _repo_root()
 if (sys.stdout.encoding or "").lower().replace("-", "") != "utf8":
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 
@@ -87,8 +106,29 @@ _NOT_A_PERSON_TOKEN = {
 }
 
 
+# Common given names, transliterated and Arabic. A lone common given name is not identifying
+# — there are thousands of them — and flagging it as a leak fires on ordinary prose (a
+# docstring example, a transliteration guide). It is only PII when paired with the surname of
+# the SAME real person, which the pair matcher below still catches. A distinctive surname on
+# its own does still flag. Keeping the gate tight here is what stops it being bypassed wholesale.
+_COMMON_GIVEN = {
+    "abdullah", "abdallah", "abdulrahman", "abdulaziz", "abdulmajeed", "mohammed", "mohammad",
+    "muhammad", "ahmed", "ahmad", "khalid", "faisal", "sultan", "nasser", "salman", "majed",
+    "majeed", "turki", "fahad", "saud", "saad", "yousef", "yusuf", "ibrahim", "hamad", "hassan",
+    "hussein", "sara", "noura", "nora", "fatima", "aisha", "maryam", "reem", "hana", "lina",
+    "عبدالله", "عبدالرحمن", "عبدالعزيز", "عبدالمجيد", "محمد", "أحمد", "احمد", "خالد", "فيصل",
+    "سلطان", "ناصر", "سلمان", "ماجد", "تركي", "فهد", "سعود", "سعد", "يوسف", "إبراهيم", "ابراهيم",
+    "حمد", "حسن", "حسين", "سارة", "نورة", "فاطمة", "عائشة", "مريم", "ريم", "لينا",
+}
+
+
 def real_names() -> set[str]:
-    """Names of real people from the local (gitignored) prospect files."""
+    """Distinctive single tokens of real people from the local (gitignored) prospect files.
+
+    Common given names are excluded here and handled only as part of a full pair (see
+    `real_name_pairs`), so a lone 'Abdullah' in prose is not treated as a leak while a
+    distinctive surname still is.
+    """
     names: set[str] = set()
     for fname in ("prospects.json", "contacts.json"):
         try:
@@ -97,13 +137,38 @@ def real_names() -> set[str]:
                     full = (row.get("name") or "").strip()
                     for token in full.split():
                         cleaned = token.strip(".,-").strip().lower()
-                        # Only distinctive tokens: a 3-letter fragment matches everything.
+                        # Only distinctive tokens: a 3-letter fragment matches everything,
+                        # and a common given name matches half the prose in the repo.
                         if (len(cleaned) >= 5 and cleaned not in _NOT_A_PERSON_TOKEN
+                                and cleaned not in _COMMON_GIVEN
                                 and not _FIXTURE_OK.search(cleaned)):
                             names.add(cleaned)
         except (FileNotFoundError, json.JSONDecodeError, AttributeError, TypeError):
             continue
     return names
+
+
+def real_name_pairs() -> list[tuple[str, str]]:
+    """Full (given, surname) pairs of real people — the high-confidence identifier.
+
+    A pair flags only when both tokens of the SAME person appear, so a common given name that
+    is safe alone is still caught when it rides next to its real surname.
+    """
+    pairs: list[tuple[str, str]] = []
+    for fname in ("prospects.json", "contacts.json"):
+        try:
+            with io.open(os.path.join(ROOT, fname), encoding="utf-8") as f:
+                for row in json.load(f):
+                    toks = [t.strip(".,-").strip().lower()
+                            for t in (row.get("name") or "").split()]
+                    toks = [t for t in toks
+                            if len(t) >= 3 and t not in _NOT_A_PERSON_TOKEN
+                            and not _FIXTURE_OK.search(t)]
+                    if len(toks) >= 2:
+                        pairs.append((toks[0], toks[-1]))
+        except (FileNotFoundError, json.JSONDecodeError, AttributeError, TypeError):
+            continue
+    return pairs
 
 
 def _git(*args: str) -> str:
@@ -126,7 +191,8 @@ def _added_lines(diff: str) -> str:
                      if l.startswith("+") and not l.startswith("+++"))
 
 
-def scan_text(label: str, text: str, names: set[str], creds_only: bool = False) -> list[str]:
+def scan_text(label: str, text: str, names: set[str], creds_only: bool = False,
+              pairs: list[tuple[str, str]] | None = None) -> list[str]:
     hits = []
     for what, pattern in _SECRETS:
         for m in pattern.finditer(text):
@@ -142,6 +208,11 @@ def scan_text(label: str, text: str, names: set[str], creds_only: bool = False) 
     for name in names:
         if name in lowered:
             hits.append(f"{label}: real prospect name -> {name}")
+    # Full pairs catch a common given name riding next to its real surname, which the
+    # distinctive-token pass above deliberately skips.
+    for given, surname in (pairs or []):
+        if given in lowered and surname in lowered:
+            hits.append(f"{label}: real prospect name -> {given} {surname}")
     return hits
 
 
@@ -158,6 +229,7 @@ def main() -> None:
     args = ap.parse_args()
 
     names = real_names()
+    pairs = real_name_pairs()
     hits: list[str] = []
 
     if args.all_tracked:
@@ -166,18 +238,18 @@ def main() -> None:
                 hits.append(f"TRACKED FILE that must never be committed: {path}")
             try:
                 with io.open(os.path.join(ROOT, path), encoding="utf-8") as f:
-                    hits += scan_text(path, f.read(), names, args.credentials_only)
+                    hits += scan_text(path, f.read(), names, args.credentials_only, pairs)
             except (OSError, UnicodeDecodeError):
                 continue
     else:
         diff = _git("diff", "--cached") or _git("diff", "HEAD~1")
         if args.rng:
             diff = _git("diff", args.rng)
-            hits += scan_text("commit message", _git("log", "--format=%B", args.rng), names)
+            hits += scan_text("commit message", _git("log", "--format=%B", args.rng), names, pairs=pairs)
         for path in (_git("diff", "--cached", "--name-only") or "").splitlines():
             if _FORBIDDEN_PATHS.search(path):
                 hits.append(f"STAGED file that must never be committed: {path}")
-        hits += scan_text("diff", _added_lines(diff), names)
+        hits += scan_text("diff", _added_lines(diff), names, pairs=pairs)
 
     if hits:
         print("REFUSING — real data or credentials found:\n")

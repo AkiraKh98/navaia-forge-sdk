@@ -45,7 +45,7 @@ import nav_env
 CLOUD_BASE = nav_env.base_url()
 CLOUD_WF = nav_env.CLOUD_WORKFORCE_ID
 TARIQ = "6ba49326-4ec0-4b3b-8651-9526ec96894e"
-CRM_BASE = "https://crm.navaia.sa"
+CRM_BASE = nav_env.crm_base()
 BIZ_ENV = os.path.join(os.path.dirname(__file__), "..", ".env")
 SDK_ENV = r"C:\Users\aabbo\navaia-forge-sdk\.env"
 

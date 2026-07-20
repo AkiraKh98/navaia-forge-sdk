@@ -56,7 +56,7 @@ ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 RENDER_FILE = os.path.join(ROOT, "outreach_render.md")
 CAL = "https://cal.com/abdulmajeed-alwardi"
 SIG = "عبدالمجيد الوردي"
-CRM_BASE = "https://crm.navaia.sa"
+CRM_BASE = nav_env.crm_base()
 
 # CRM sector -> lina_compose LIBRARY key
 # ACTIVE verticals only — locked to three by operator decision 2026-07-19.

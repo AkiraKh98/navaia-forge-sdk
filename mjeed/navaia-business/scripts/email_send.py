@@ -52,6 +52,16 @@ def main() -> None:
     if args.signature_file:
         sig = open(args.signature_file, encoding="utf-8").read().strip()
     as_html = args.html or bool(sig)
+
+    # Fail closed on the plain-text/HTML mismatch. A body with tags sent as text/plain arrives
+    # with the markup VISIBLE — literal <div>/<br> in a stranger's inbox under the operator's
+    # name. The old code sent it silently; make the operator choose instead of guessing wrong.
+    if not as_html and re.search(r"<(?:/?[a-zA-Z][a-zA-Z0-9]*|br\s*/?)\b[^>]*>", args.body):
+        raise SystemExit(
+            "Body looks like HTML but would be sent as plain text — the tags would show as\n"
+            "literal markup in the recipient's inbox. Pass --html to render it, or strip the\n"
+            "tags if you really mean to send plain text."
+        )
     transport = "Snov.io" if args.via == "snov" else "Zoho Mail"
 
     parts = [

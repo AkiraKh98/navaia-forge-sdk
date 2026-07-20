@@ -35,7 +35,7 @@ import pipeline_prep as prep
 import polite_fetch
 from agent_scraping_skill import agent_scraping_skill
 
-CRM = "https://crm.navaia.sa"
+CRM = nav_env.crm_base()
 ACTIVE = ["Real Estate", "Contracting & Facilities", "Training Institutes"]
 
 # Pages worth a second look when the homepage has no address. Arabic slugs included —
