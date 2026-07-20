@@ -213,7 +213,8 @@ class TG:
 
 
 MAIN_MENU = [
-    [{"text": "🚀 Fire pipeline", "callback_data": "menu:pipeline"}],
+    [{"text": "🚀 Fire pipeline", "callback_data": "menu:pipeline"},
+     {"text": "📇 CRM leads", "callback_data": "menu:leads"}],
     [{"text": "📊 Status", "callback_data": "menu:status"}, {"text": "🗂 Tasks", "callback_data": "menu:tasks"}],
     [{"text": "⏳ Approvals", "callback_data": "menu:approvals"}, {"text": "📈 Daily report", "callback_data": "menu:report"}],
     [{"text": "🆕 New task", "callback_data": "menu:newtask"}, {"text": "👥 Ask an agent", "callback_data": "menu:ask"}],
@@ -234,6 +235,8 @@ HELP = (
     "• /approvals — every task waiting on you, with Approve/Reject buttons\n"
     "• /report — daily ops summary (Rashid)\n"
     "• /send — approve outreach WhatsApp sends\n"
+    "• /leads — CRM pipeline health: lead counts by status and vertical\n"
+    "• /lead <name|phone> — find a specific lead in the CRM\n"
     "• /mode — switch sends between 🧪 TEST (to your number) and 🔴 LIVE (real leads), no restart\n"
     "• /menu — buttons · /help — this guide · /stop — stop the bot\n\n"
     "APPROVALS (human-in-the-loop)\n"
@@ -503,6 +506,89 @@ def main() -> None:
             lines.append(f"{STATUS_ICON.get(str(t.status).lower(),'🔄')} {str(t.title)[:48]}")
         tg.send("\n".join(lines))
 
+    # ── CRM lead visibility (dashboard + search) — cloud-safe, reads the CRM ──
+    _ACTIVE_VERTS = ["Real Estate", "Contracting & Facilities", "Training Institutes"]
+    _STATUS_ORDER = ["Not Contacted", "Emailed", "Whatsapped", "Replied",
+                     "Meeting Booked", "Closed", "Not Qualified", "Unresponsive"]
+
+    def crm_leads():
+        """Live pipeline health from the CRM: Mjeed's leads by status x vertical.
+
+        This is what lets the operator run the business from the phone — the bot fires
+        outreach but was otherwise blind to the actual lead inventory. Reads through the
+        PAGINATED helper so the ~900-person CRM is never silently truncated.
+        """
+        try:
+            import collections
+            import pipeline_prep as prep
+            ppl = prep.crm_people_fields("id leadStatus sector")
+        except Exception as e:
+            tg.send(f"CRM read error: {e}")
+            return
+        if not ppl:
+            tg.send("No leads in the CRM under Mjeed yet.")
+            return
+        grid = collections.defaultdict(collections.Counter)
+        totals = collections.Counter()
+        for p in ppl:
+            st = (p.get("leadStatus") or "—").strip().title()   # unify 'not contacted' casing
+            sec = (p.get("sector") or "—").strip()
+            grid[sec][st] += 1
+            totals[st] += 1
+        order = [s for s in _STATUS_ORDER if s in totals] + \
+                [s for s in totals if s not in _STATUS_ORDER]
+        lines = [f"📇 *CRM leads* — {len(ppl)} under Mjeed", ""]
+        for sec in _ACTIVE_VERTS:
+            c = grid.get(sec)
+            if not c:
+                continue
+            parts = " · ".join(f"{s} {c[s]}" for s in order if c[s])
+            lines.append(f"*{sec}* ({sum(c.values())})\n  {parts}")
+        others = {s: grid[s] for s in grid if s not in _ACTIVE_VERTS}
+        if others:
+            oc = sum(sum(c.values()) for c in others.values())
+            lines.append(f"\n_other / unsectored: {oc}_  "
+                         f"({', '.join(sorted(others))[:70]})")
+        lines.append("\n*Totals:* " + " · ".join(f"{s} {totals[s]}" for s in order))
+        tg.send("\n".join(lines))
+
+    def lead_search(q):
+        """Find a specific lead by name or phone — look up a record from the phone."""
+        import re
+        q = (q or "").strip()
+        if len(q) < 2:
+            tg.send("Search needs at least 2 characters:  /lead <name or phone>")
+            return
+        try:
+            import pipeline_prep as prep
+            ppl = prep.crm_people_fields(
+                "id name{firstName lastName} leadStatus sector jobTitle "
+                "phones{primaryPhoneNumber} emails{primaryEmail}")
+        except Exception as e:
+            tg.send(f"CRM read error: {e}")
+            return
+        ql, qd = q.lower(), re.sub(r"\D", "", q)
+        hits = []
+        for p in ppl:
+            nm = ((p.get("name") or {}).get("firstName", "") + " " +
+                  (p.get("name") or {}).get("lastName", "")).strip()
+            ph = (p.get("phones") or {}).get("primaryPhoneNumber", "") or ""
+            if ql in nm.lower() or (len(qd) >= 4 and qd in re.sub(r"\D", "", ph)):
+                hits.append((nm, p, ph))
+        if not hits:
+            tg.send(f"No CRM lead matches “{q}”.")
+            return
+        lines = [f"🔎 {len(hits)} match(es) for “{q}”:", ""]
+        for nm, p, ph in hits[:12]:
+            em = (p.get("emails") or {}).get("primaryEmail") or "-"
+            role = p.get("jobTitle") or ""
+            lines.append(f"• *{nm or '(no name)'}*{(' — ' + role) if role else ''}\n"
+                         f"  {p.get('leadStatus') or '—'} · {p.get('sector') or '—'}\n"
+                         f"  {ph or '-'} · {em}")
+        if len(hits) > 12:
+            lines.append(f"\n…and {len(hits) - 12} more — narrow the search.")
+        tg.send("\n".join(lines))
+
     # ── task browser (view running / completed outputs) ───────────────────────
     def list_tasks(filt="all"):
         try:
@@ -622,6 +708,7 @@ def main() -> None:
                     continue
                 if data == "menu:status": status()
                 elif data == "menu:pipeline": pipeline_menu()
+                elif data == "menu:leads": crm_leads()
                 elif data == "pipe:outreach": fire_pipeline("outreach")
                 elif data == "menu:approvals": pending_approvals()
                 elif data == "menu:tasks":
@@ -723,6 +810,10 @@ def main() -> None:
             if low.startswith("/report"):
                 start_task(agents.get("Rashid"), "Rashid", "Generate today's 5-line NAVAIA operations summary.", kind="report"); continue
             if low.startswith("/send"): present_sends(); continue
+            if low.startswith("/leads"): crm_leads(); continue
+            if low.startswith("/lead"):
+                arg = text[5:].strip()
+                lead_search(arg) if arg else crm_leads(); continue
             if low.startswith("/mode"): mode_menu(); continue
             if low.startswith("/chats"): list_chats(); continue
             if low.startswith("/chat"):
