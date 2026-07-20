@@ -35,7 +35,7 @@ docker run --rm -v "$PWD:/work" gosom/google-maps-scraper:latest-rod -input /wor
 .venv/Scripts/python.exe scripts/enrich_emails.py                 # 3a. website crawl + web search → updates CRM
 .venv/Scripts/python.exe scripts/fetch_emails_snov.py             # 3b. Snov.io v2 email fetch (async) → updates CRM
 .venv/Scripts/python.exe scripts/verify_all_emails.py             # 4. Snov.io v2 verify (.sa → "likely valid") → updates CRM
-.venv/Scripts/python.exe scripts/import_all_leads.py              # 5. import to Twenty CRM (store place_id). NO dedup — CRM backend handles it. Count ACTUAL-added; top up until N new.
+.venv/Scripts/python.exe scripts/import_selected_leads.py --from-pool leads_enriched_people.json   # 5. import to Twenty CRM (person-first, DEDUPED against existing Mjeed phones, idempotent).
 .venv/Scripts/python.exe scripts/verify_import.py                 # 6. confirm the ACTUAL added count
 .venv/Scripts/python.exe scripts/enrich_reviews.py                  # 7. TRUST-LOCKED review pain (place_id + phone verified) → CRM → feeds {trigger_line}
 ```

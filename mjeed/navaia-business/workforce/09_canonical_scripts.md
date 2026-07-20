@@ -77,7 +77,7 @@
 
 | Script | Purpose |
 |--------|---------|
-| `import_all_leads.py` | Bulk import to Twenty CRM. 0.5s rate limit. Creates 35 companies + 35 people. |
+| `import_selected_leads.py` | Import leads to Twenty CRM (person-first, deduped). `--from-pool <enriched.json>` migrates the scrape pool; `--src selected_leads.json` the selection. 0.5s rate limit. (Replaced the broken `import_all_leads.py`, removed 2026-07-20.) |
 
 ## CRM Utils
 
@@ -165,8 +165,8 @@ python scripts/fetch_emails_snov.py
 # 5. Verify
 python scripts/verify_all_emails.py
 
-# 6. Import
-python scripts/import_all_leads.py
+# 6. Import (person-first, deduped)
+python scripts/import_selected_leads.py --from-pool leads_enriched_people.json
 
 # 7. Post-import verify
 python scripts/verify_import.py
