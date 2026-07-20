@@ -11,3 +11,8 @@
 navaia-forge      # the published NavaiaForge SDK (imported as navaia_forge)
 navaia-code       # the `navaia` CLI used to run agents
 httpx             # CRM / GraphQL / Overpass HTTP calls in the lead scripts
+crawl4ai          # micro_scraper.py / agent_scraping_skill.py — Rashid's scraping skill.
+                  # Drives a real browser via Playwright, so after installing run:
+                  #   python -m playwright install chromium
+                  # Without the browser binaries the scraper fails at launch, and the
+                  # runtime that lacks it is exactly where leads get fabricated instead.

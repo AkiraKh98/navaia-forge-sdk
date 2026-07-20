@@ -22,7 +22,12 @@ def agent_scraping_skill(url: str, selectors: dict = {}) -> dict:
             [venv_python, script_path, url, selectors_str],
             capture_output=True,
             text=True,
-            timeout=45  # Safety boundary: prevents any infinite hangs or freezes
+            # text=True alone decodes with the SYSTEM codec (cp1252 on Windows), which
+            # raises UnicodeDecodeError on the UTF-8 Arabic the scraper returns — the page
+            # fetches fine and the result is then lost in the pipe. Decode explicitly.
+            encoding="utf-8",
+            errors="replace",
+            timeout=90  # Safety boundary: prevents hangs. Browser cold-start alone is ~5-15s.
         )
         
         # Parse the clean JSON stdout returned by crawl4ai

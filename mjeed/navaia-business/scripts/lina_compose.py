@@ -87,33 +87,33 @@ LIBRARY: dict[str, dict] = {
     "contracting": {
         "desc": "مقاولات وصيانة: رصد المناقصات (اعتماد وفرصة)، تقييم الأهلية، عروض أسعار، عقود القطاع الخاص",
         "general": {
-            "pain": "قد يخسر مقاولو التشغيل والصيانة عقوداً كل أسبوع لغياب فريقٍ يرصد المناقصات ويجهّز الردّ في وقته",
-            "solution": "ونحن إلى جانب فرقكم نُؤتمت رصد المناقصات على اعتماد وفرصة فور نشرها وتقييم الأهلية وتجهيز الردّ، بقدرة فريق مناقصاتٍ كامل دون توظيف",
+            "pain": "قد تفوت مقاولي التشغيل والصيانة عقودٌ كل أسبوع، لغياب من يرصد المناقصات ويجهّز الردّ في وقته",
+            "solution": "ونحن إلى جانب فرقكم نُشغّل أتمتةً ترصد مناقصات اعتماد وفرصة فور نشرها وتُقيّم الأهلية وتجهّز الردّ، بقدرة فريق مناقصاتٍ كامل دون توظيف",
         },
         "categories": {
             "rfq_slow": {
                 "triggers": ["عرض سعر", "تسعير", "سعر", "عروض", "العرض", "rfq"],
                 "desc": "تأخّر الردّ على طلبات عروض الأسعار",
-                "pain": "تأخّر الردّ على طلبات عروض الأسعار",
-                "solution": "ونحن إلى جانب فرقكم نُؤتمت استقبال الطلبات والردّ الأولي عليها فوراً، فلا يفوتكم طلب",
+                "pain": "قد يتأخّر الردّ على طلبات عروض الأسعار حتى يسبقكم غيركم",
+                "solution": "ونحن إلى جانب فرقكم نُشغّل أتمتةً تستقبل الطلبات وتردّ عليها ردّاً أوّلياً فور وصولها، فلا يفوتكم طلب",
             },
             "tender_deadline": {
                 "triggers": ["مناقص", "عطاء", "العطاء", "الترسيه", "ترسيه", "التسليم", "اعتماد", "فرصه"],
                 "desc": "متابعة المناقصات يدوية متقطّعة فتصل العروض متأخرة",
-                "pain": "متابعة المناقصات على اعتماد وفرصة يدويةٌ متقطّعة، فيتأخّر العرض عن موعده",
-                "solution": "ونحن إلى جانب فرقكم نُؤتمت الرصد اللحظي لكل منافسة فور نشرها وتقييم أهليتها وموجز قرارها خلال دقائق، فلا عروض متأخرة",
+                "pain": "متابعة مناقصات اعتماد وفرصة يدويّةٌ متقطّعة، فيتأخّر العرض عن موعده",
+                "solution": "وبأتمتةٍ إلى جانب فرقكم تُرصَد كل منافسةٍ فور نشرها وتُقيَّم أهليّتها ويصلكم موجز قرارها خلال دقائق، فلا يتأخّر عرض",
             },
             "followup_lost": {
                 "triggers": ["متابع", "تابع", "معلق", "بدون متابعه", "ما تابع"],
                 "desc": "بقاء العروض دون متابعة حتى تبرد",
-                "pain": "بقاء عروضكم دون متابعة حتى تبرد",
-                "solution": "ونحن إلى جانب فرقكم نُؤتمت متابعة عروضكم المعلّقة في وقتها، فلا يبرد عرضٌ لكم",
+                "pain": "تبقى بعض عروضكم معلّقةً دون متابعةٍ حتى يفتر الاهتمام بها",
+                "solution": "ونحن إلى جانب فرقكم نُشغّل أتمتةً تتابع العروض المعلّقة في وقتها، فيبقى العرض حيّاً حتى الحسم",
             },
             "private_contracts": {
                 "triggers": ["قطاع خاص", "ملاك", "المنشات", "مرافق", "عقود مباشره", "عقد صيانه"],
                 "desc": "غياب خطٍّ موازٍ لعقود القطاع الخاص مع ملّاك المنشآت",
-                "pain": "الاعتماد على المناقصات وحدها دون خطِّ عقودٍ مباشرٍ مع ملّاك المنشآت والمرافق",
-                "solution": "ونحن إلى جانبكم نُؤتمت بناء خط عقود القطاع الخاص مع ملّاك المنشآت والمرافق، موازياً للمناقصات",
+                "pain": "الاعتماد على المناقصات وحدها، دون خطِّ عقودٍ مباشرٍ مع ملّاك المنشآت والمرافق",
+                "solution": "ونحن إلى جانبكم نُشغّل أتمتةً تبني خطّ عقود القطاع الخاص مع ملّاك المنشآت والمرافق، موازياً للمناقصات",
             },
         },
     },
@@ -159,78 +159,78 @@ LIBRARY: dict[str, dict] = {
     "realestate": {
         "desc": "عقار وإدارة أملاك: ردّ فوري على المهتمّين، حملات على قوائم البيع والإيجار، تحصيل إيجار، مناقصات تطوير",
         "general": {
-            "pain": "قد يفقد العميل المهتمّ اهتمامه خلال دقائق إن لم يردّ عليه أحد، بينما تنتظر قوائم البيع والإيجار تواصلاً صادراً ومتابعة",
-            "solution": "ونحن إلى جانب فرقكم نُؤتمت الردّ الفوري على المهتمّين، مشترين ومستأجرين، وتشغيل الحملات على قوائمكم من اليوم الأول، دون عبءٍ على فريقكم",
+            "pain": "قد ينصرف المهتمّ خلال دقائق إن لم يجد ردّاً، وتبقى قوائم البيع والإيجار دون تواصلٍ صادرٍ ومتابعة",
+            "solution": "ونحن إلى جانب فرقكم نُشغّل أتمتةً تتولّى الردّ على المهتمّين، مشترين ومستأجرين، وتدير الحملات على قوائمكم من اليوم الأول، دون عبءٍ على فريقكم",
         },
         "categories": {
             "slow_reply_lead": {
                 "triggers": ["تاخر", "يرد", "يردوا", "يردون", "ردو", "بدون رد", "استفسر", "الاستفسار"],
                 "desc": "تأخّر الردّ على استفسارات المهتمّين حتى يبردوا",
-                "pain": "تأخّر الردّ على المهتمّين حتى يفقد أحدهم اهتمامه أو يتّصل بمكتبٍ منافس",
-                "solution": "ونحن إلى جانب فرقكم نُؤتمت الردّ الأول على المهتمّين في أقل من دقيقة، فلا يبرد مهتمٌّ لكم",
+                "pain": "قد يتأخّر الردّ على المهتمّين، فينصرف أحدهم إلى مكتبٍ آخر قبل أن يصله ردّكم",
+                "solution": "ونحن إلى جانب فرقكم نُشغّل أتمتةً تتولّى الردّ الأول خلال أقل من دقيقة، فيبقى المهتمّ معكم",
             },
             "viewing_coord": {
                 "triggers": ["معاين", "المعاين", "زياره", "تنسيق"],
                 "desc": "صعوبة تنسيق مواعيد المعاينات",
-                "pain": "تنسيق مواعيد المعاينات مع المهتمّين",
-                "solution": "ونحن إلى جانب فرقكم نُؤتمت تنسيق المعاينات وتذكير المهتمّين بها، فتزيد الزيارات الفعلية",
+                "pain": "تنسيق مواعيد المعاينات يستهلك وقت فريقكم، وبعضها لا يكتمل",
+                "solution": "وبأتمتةٍ تعمل إلى جانبكم يُنسَّق الموعد ويُذكَّر به المهتمّ تلقائياً، فترتفع الزيارات الفعلية",
             },
             "vacancy": {
                 "triggers": ["شاغر", "فاضي", "اشغال", "تاجير"],
                 "desc": "بقاء الوحدات شاغرة طويلاً",
-                "pain": "بقاء وحداتكم شاغرة أطول من اللازم",
-                "solution": "ونحن إلى جانب فرقكم نُؤتمت متابعة المهتمّين حتى الإغلاق، فتقلّ مدة الشغور",
+                "pain": "تبقى بعض الوحدات شاغرةً أطول ممّا ينبغي",
+                "solution": "ونحن إلى جانبكم نُشغّل أتمتةً تتابع المهتمّين حتى الإغلاق، فتقصر مدّة الشغور",
             },
             "campaigns": {
                 "triggers": ["حمله", "حملات", "تسويق", "قوائم", "صادر"],
                 "desc": "قوائم البيع والإيجار دون تواصل صادر منتظم",
-                "pain": "قوائم البيع والإيجار لديكم دون تواصلٍ صادرٍ وحملاتٍ منتظمة",
-                "solution": "ونحن إلى جانبكم نُؤتمت التواصل الصادر والحملات على قوائم البيع والإيجار معاً من اليوم الأول",
+                "pain": "قوائمكم للبيع والإيجار تفتقر إلى تواصلٍ صادرٍ وحملاتٍ منتظمة",
+                "solution": "وبأتمتةٍ إلى جانب فرقكم يمضي التواصل الصادر والحملات على القوائم معاً من اليوم الأول",
             },
             "rent_collection": {
                 "triggers": ["تحصيل", "دفعه", "دفعات", "سداد", "تاخر الايجار"],
                 "desc": "تأخّر دفعات الإيجار ومتابعة تحصيلها وإسناد الملّاك",
-                "pain": "تأخّر دفعات الإيجار ومتابعة تحصيلها ومساندة ملّاككم بعد البيع",
-                "solution": "ونحن إلى جانبكم نُؤتمت تذكير المستأجرين بالدفعات ومتابعة التحصيل وإسناد ملّاككم، دون فريق دعمٍ إضافي",
+                "pain": "تتأخّر دفعات الإيجار، وتستهلك متابعة تحصيلها ومساندة الملّاك جهد فريقكم",
+                "solution": "ونحن إلى جانبكم نُشغّل أتمتةً تُذكّر المستأجرين بدفعاتهم وتتابع التحصيل وتُسند ملّاككم، دون فريق دعمٍ إضافي",
             },
             "dev_tenders": {
                 "triggers": ["مناقص", "تطوير", "اعتماد", "فرصه"],
                 "desc": "مناقصات التطوير تمرّ دون فحص وردّ في وقته",
-                "pain": "مناقصات التطوير تمرّ دون فحصٍ وردٍّ جاهزٍ في وقته",
-                "solution": "ونحن إلى جانبكم نُؤتمت فحص مناقصات التطوير على اعتماد وفرصة فور نشرها وتجهيز الردّ، فلا تفوتكم فرصة",
+                "pain": "قد تمرّ مناقصات التطوير دون فحصٍ أو ردٍّ جاهزٍ في وقته",
+                "solution": "وبأتمتةٍ إلى جانبكم تُفحَص مناقصات اعتماد وفرصة فور نشرها ويُجهَّز الردّ، فلا تفوتكم فرصة",
             },
         },
     },
     "training": {
         "desc": "معهد تدريب: ذروة موسم التسجيل، متابعة المستفسر حتى الحسم، مناقصات التدريب الحكومية (اعتماد وفرصة)",
         "general": {
-            "pain": "موسم التسجيل يُغرق الفريق، ومناقصات التدريب الحكومية لا تنتظر أحداً، فيضيع مستفسرٌ أو يفوت موعد تقديم",
-            "solution": "ونحن إلى جانب فرقكم نُؤتمت الردّ على كل مستفسرٍ في ذروة الموسم وفحص كل مناقصةٍ فور نشرها وتجهيز الردّ، بفريقٍ واحدٍ طوال الموسم",
+            "pain": "يُثقل موسم التسجيل فريقكم، ومناقصات التدريب الحكومية لا تنتظر، فيضيع مستفسرٌ أو يفوت موعد تقديم",
+            "solution": "ونحن إلى جانب فرقكم نُشغّل أتمتةً تتولّى الردّ على المستفسرين في ذروة الموسم وتفحص كل مناقصةٍ فور نشرها وتجهّز الردّ، بفريقٍ واحدٍ طوال الموسم",
         },
         "categories": {
             "season_overload": {
                 "triggers": ["موسم التسجيل", "التسجيل", "زحمه", "زحام", "كثره الاستفسار", "ضغط"],
                 "desc": "ذروة موسم التسجيل تفوق طاقة الفريق فتضيع مكالمات ورسائل",
-                "pain": "ذروة موسم التسجيل تفوق طاقة فريقكم فتفوت مكالماتٌ ورسائل",
-                "solution": "ونحن إلى جانب فرقكم نُؤتمت الردّ على كل مكالمةٍ ورسالة في أعلى مواسم القبول دون انهيار، فلا يضيع مستفسر",
+                "pain": "تفوق ذروة موسم التسجيل طاقة فريقكم، فتفوت مكالماتٌ ورسائل",
+                "solution": "ونحن إلى جانب فرقكم نُشغّل أتمتةً تستوعب كل مكالمةٍ ورسالة في أعلى مواسم القبول، فلا يضيع مستفسر",
             },
             "incomplete_reg": {
                 "triggers": ["لم يكمل", "ما كمل", "يكمل", "تسجيل ناقص", "توقف", "لم يسجل"],
                 "desc": "عدم متابعة المستفسر حتى إتمام التسجيل",
-                "pain": "توقّف بعض المستفسرين في منتصف تسجيلهم دون متابعةٍ حتى الحسم",
-                "solution": "ونحن إلى جانب فرقكم نُؤتمت متابعة كل مستفسرٍ حتى الحسم وتذكيره، فترتفع نسبة الإتمام",
+                "pain": "يتوقّف بعض المستفسرين في منتصف تسجيلهم فلا يجدون من يتابعهم حتى الحسم",
+                "solution": "وبأتمتةٍ إلى جانب فرقكم يُتابَع كل مستفسرٍ ويُذكَّر حتى يُتمّ تسجيله، فترتفع نسبة الإتمام",
             },
             "slow_reply_edu": {
                 "triggers": ["تاخر", "يرد", "يردون", "ردو", "بدون رد", "استفسار"],
                 "desc": "تأخّر الردّ على استفسارات المتدرّبين",
-                "pain": "تأخّر الردّ على استفسارات المتدرّبين",
-                "solution": "ونحن إلى جانب فرقكم نُؤتمت الردّ الفوري على استفساراتهم، فلا يتّجه المستفسر لغيركم",
+                "pain": "قد يتأخّر الردّ على استفسارات المتدرّبين حتى ينصرفوا",
+                "solution": "ونحن إلى جانب فرقكم نُشغّل أتمتةً تردّ على استفساراتهم فور وصولها، فيجد المستفسر جوابه عندكم",
             },
             "gov_tenders": {
                 "triggers": ["مناقص", "حكومي", "اعتماد", "فرصه", "تقديم", "منافسه"],
                 "desc": "مناقصات التدريب الحكومية تمرّ أو يتأخّر التقديم عليها",
-                "pain": "مناقصات التدريب الحكومية تمرّ أو يصل تقديمكم قريباً من الموعد النهائي",
-                "solution": "ونحن إلى جانبكم نُؤتمت فحص كل مناقصة تدريبٍ على اعتماد وفرصة فور نشرها وتجهيز الردّ قبل الموعد النهائي",
+                "pain": "قد تمرّ مناقصات التدريب الحكومية، أو يصل تقديمكم قريباً من الموعد النهائي",
+                "solution": "وبأتمتةٍ إلى جانبكم تُفحَص كل مناقصة تدريبٍ على اعتماد وفرصة فور نشرها ويُجهَّز الردّ قبل الموعد النهائي",
             },
         },
     },
@@ -247,6 +247,39 @@ def _norm(s: str) -> str:
     s = s.replace("ى", "ي").replace("ئ", "ي").replace("ؤ", "و").replace("ة", "ه")
     s = re.sub(r"[ـ\s]+", " ", s)  # tatweel + collapse whitespace
     return s.strip()
+
+
+# Arabic clitics/prefixes that hide a trigger from substring matching. Reviews are written
+# in dialect and inflect freely — the trigger 'يرد' must still match 'ما ترد', 'ما يردون',
+# 'والرد'. Stripping these makes the DETERMINISTIC pass morphology-tolerant, so a working
+# LLM key stops being a prerequisite for personalised pain.
+# Deliberately CONSERVATIVE. An earlier, looser version (stripping م/س/ا and matching stems
+# by two-way containment) raised the match count 2/9 -> 6/9 but most of the new matches were
+# WRONG: 'معتمده' (accredited) bled into the 'اعتماد' trigger and sent a support-response
+# complaint to gov_tenders. Wrong pain is worse than general pain — it ships confidently
+# personalised copy about a problem the lead does not have. Only clitics and the imperfect
+# verb prefixes are stripped, and stems must match EXACTLY.
+_PREFIXES = ("وال", "بال", "كال", "فال", "لل", "ال", "و", "ب", "ل", "ي", "ت", "ن")
+_SUFFIXES = ("ون", "ين", "ات", "ها", "هم", "كم", "نا", "ه")
+_MIN_STEM = 3   # never stem below 3 chars — short stems cause false positives ('رد' in 'برد')
+
+
+def _stem(word: str) -> str:
+    """Crude affix-stripper for matching only (never for display)."""
+    w = word
+    for p in _PREFIXES:
+        if w.startswith(p) and len(w) - len(p) >= _MIN_STEM:
+            w = w[len(p):]
+            break
+    for s in _SUFFIXES:
+        if w.endswith(s) and len(w) - len(s) >= _MIN_STEM:
+            w = w[:-len(s)]
+            break
+    return w
+
+
+def _stems(text: str) -> set[str]:
+    return {_stem(w) for w in _norm(text).split() if w}
 
 
 CHEAP_MODEL = "qwen/qwen3.6-plus"   # same cheap model the enrichment uses
@@ -282,8 +315,11 @@ def classify_llm(vertical: str, pain_line: str, key: str) -> str | None:
         cid = str(json.loads(m.group(0)).get("category", "none")).strip() if m else "none"
         return cid if cid in lib["categories"] else None
     except Exception as e:
-        print(f"    (classify_llm error: {e})")
-        return None
+        # Signal FAILURE distinctly from "no match". Returning None here would make a dead
+        # key or a rate-limit look identical to "this pain isn't solvable" — the caller
+        # would then report 'no solvable match -> general' and quietly ship generic copy.
+        print(f"    (classify_llm FAILED — semantic pass unavailable: {e})")
+        return False
 
 
 def select(vertical: str, pain_line: str, *, use_llm: bool = False, key: str | None = None) -> dict:
@@ -313,24 +349,42 @@ def select(vertical: str, pain_line: str, *, use_llm: bool = False, key: str | N
     if not p_norm:
         return _general("no specific pain_line -> general (whole)")
 
-    # tier 1 — deterministic keyword fast-path (inflection-friendly cores)
+    # tier 1 — deterministic fast-path. Two passes, both keyword-grounded:
+    #   (a) raw substring on the normalized text (original behaviour, exact phrases)
+    #   (b) stem-vs-stem, which catches the inflected dialect forms reviews actually use
+    #       ('ما ترد' vs trigger 'يرد') without needing the LLM pass.
+    p_stems = _stems(pain_line)
     best_cat, best_hits = None, 0
     for cat, spec in lib["categories"].items():
-        hits = sum(1 for kw in spec["triggers"] if _norm(kw) in p_norm)
+        hits = 0
+        for kw in spec["triggers"]:
+            kw_n = _norm(kw)
+            if kw_n in p_norm:
+                hits += 1
+                continue
+            kw_stems = {_stem(w) for w in kw_n.split() if w}
+            # EXACT stem equality only — no containment in either direction. Multi-word
+            # triggers must match every part.
+            if kw_stems and kw_stems <= p_stems:
+                hits += 1
         if hits > best_hits:
             best_cat, best_hits = cat, hits
     score_specific = best_hits * PER_KEYWORD + (GROUNDED_BONUS if best_hits else 0.0)
     if best_cat and score_specific > GENERAL_RELEVANCE:
         return _specific(best_cat, score_specific, f"keyword: maps to '{best_cat}' ({best_hits} kw) -> beats general")
 
-    # tier 2 — cheap-LLM semantic fallback (morphology-robust; returns None -> general)
+    # tier 2 — cheap-LLM semantic fallback (morphology-robust)
+    #   category id -> matched | None -> genuinely no match | False -> the call FAILED
     if use_llm and key:
         cid = classify_llm(vk, pain_line, key)
+        if cid is False:
+            return _general("llm: semantic pass FAILED (see error above) -> general; "
+                            "this lead was NOT semantically classified")
         if cid:
             return _specific(cid, GENERAL_RELEVANCE + GROUNDED_BONUS, f"llm: semantic match -> '{cid}'")
         return _general("llm: no solvable match -> general more relevant")
 
-    return _general("specific present but no keyword match -> general (enable --llm for semantic pass)")
+    return _general("specific present but no keyword/stem match -> general (enable --llm for semantic pass)")
 
 
 def compose_block(vertical: str, pain_line: str, *, use_llm: bool = False,

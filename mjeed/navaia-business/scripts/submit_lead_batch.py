@@ -52,12 +52,18 @@ def resolve_agent(cloud, name: str) -> str:
     return agents[name]
 
 # CRM sector value -> fallback Overpass/OSM guidance only; search terms live with the scrape.
+# ACTIVE verticals — locked to three by operator decision 2026-07-19.
+# "Private Clinics" and "Finance & Debt Collection" are RETIRED: never scrape,
+# score, import, render copy for, or send to them. Only the operator reopens one.
 ALL_VERTICALS = [
     "Contracting & Facilities",
-    "Finance & Debt Collection",
-    "Private Clinics",
     "Real Estate",
     "Training Institutes",
+]
+
+RETIRED_VERTICALS = [
+    "Finance & Debt Collection",
+    "Private Clinics",
 ]
 
 

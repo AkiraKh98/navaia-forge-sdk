@@ -36,8 +36,48 @@ import nav_env
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 TEMPLATES_MD = os.path.join(ROOT, "workforce", "04_outreach_templates.md")
+SCRAPE_POOL = os.path.join(ROOT, "leads_scraped_compact.json")
 CRM_BASE = "https://crm.navaia.sa"
 SNOV_API = "https://api.snov.io"
+
+
+def _phone9(p: str) -> str:
+    """Last 9 digits — the only phone form that matches across CRM/scrape/OSM."""
+    d = re.sub(r"\D", "", p or "")
+    return d[-9:] if len(d) >= 9 else ""
+
+
+_pain_index: dict[str, str] | None = None
+
+
+def scrape_pain_index() -> dict[str, str]:
+    """{phone9: pain text} from the scrape pool — the lead's OWN review snippets.
+
+    Why this exists: the designed review-enrichment step (enrich_reviews.py) is
+    trust-locked to a Google *Places* place_id, and Places is retired — so nothing
+    was carrying per-lead pain into the render and every lead silently fell back to
+    the general block. The gosom scrape already captures same-listing review text;
+    this indexes it by phone so not_contacted_leads() can attach it.
+
+    Trust: phone is matched exactly (last 9 digits), so a hint can only ever reach
+    the lead whose listing produced it — same guarantee place_id gave us.
+    The raw text still NEVER ships: lina_compose.select() uses it only to PICK a
+    pain category, whose own neutral wording is what goes in the message.
+    """
+    global _pain_index
+    if _pain_index is not None:
+        return _pain_index
+    _pain_index = {}
+    try:
+        with open(SCRAPE_POOL, encoding="utf-8") as f:
+            for lead in json.load(f):
+                key = _phone9(lead.get("phone", ""))
+                hints = lead.get("pain_hints") or []
+                if key and hints:
+                    _pain_index[key] = " ".join(hints)
+    except (FileNotFoundError, json.JSONDecodeError):
+        pass
+    return _pain_index
 SNOV_DELAY = 2.0
 
 VERTICAL_BY_NUM = {
@@ -272,14 +312,18 @@ def not_contacted_leads(verticals: list[str]) -> list[dict]:
             continue
         name = " ".join(x for x in [(p.get("name") or {}).get("firstName"),
                                     (p.get("name") or {}).get("lastName")] if x).strip()
+        phone = (p.get("phones") or {}).get("primaryPhoneNumber") or ""
         out.append({
             "person_id": p["id"],
             "company": (p.get("company") or {}).get("name") or name,
             "contact_name": name if name != ((p.get("company") or {}).get("name") or "") else "",
             "sector": p["sector"],
             "email": (p.get("emails") or {}).get("primaryEmail") or "",
-            "phone": (p.get("phones") or {}).get("primaryPhoneNumber") or "",
+            "phone": phone,
             "website": ((p.get("company") or {}).get("domainName") or {}).get("primaryLinkUrl") or "",
+            # Per-lead pain from the lead's own reviews, phone-matched to the scrape
+            # pool. Empty for leads we did not scrape — those fall back to general.
+            "pain_line": scrape_pain_index().get(_phone9(phone), ""),
         })
     return out
 

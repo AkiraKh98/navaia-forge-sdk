@@ -21,6 +21,12 @@ Usage:
     .venv/Scripts/python.exe scripts/outreach.py --verticals "Real Estate,Training Institutes"
     .venv/Scripts/python.exe scripts/outreach.py --dry-run          # render + review only
     .venv/Scripts/python.exe scripts/outreach.py --self-test        # fake leads, no CRM/cloud
+    .venv/Scripts/python.exe scripts/outreach.py --yes              # unattended: approve all
+
+NEVER pipe stdin at this script to auto-answer its prompts (`printf '\\n' | …`). Use --yes.
+Both gates guard an irreversible send and now fail CLOSED on an unanswerable prompt, so
+piping gets you an abort at best; before 2026-07-19 the key guard failed OPEN and piping
+submitted 153 sends against a $0.91 balance.
 """
 from __future__ import annotations
 
@@ -41,6 +47,7 @@ import httpx
 
 import nav_env
 import lina_compose
+import site_facts
 import pipeline_prep as prep
 from navaia_forge import NavaiaForgeClient
 from submit_lead_batch import ALL_VERTICALS, resolve_agent
@@ -52,10 +59,11 @@ SIG = "عبدالمجيد الوردي"
 CRM_BASE = "https://crm.navaia.sa"
 
 # CRM sector -> lina_compose LIBRARY key
+# ACTIVE verticals only — locked to three by operator decision 2026-07-19.
+# Retired keys (clinics, finance) are deliberately absent: a CRM lead in a retired
+# sector finds no key here and is skipped rather than rendered.
 VKEY = {
-    "Private Clinics": "clinics",
     "Contracting & Facilities": "contracting",
-    "Finance & Debt Collection": "finance",
     "Real Estate": "realestate",
     "Training Institutes": "training",
 }
@@ -88,9 +96,35 @@ _TAIL = re.compile(
     re.I)
 
 
+_ARABIC = re.compile(r"[؀-ۿ]")
+
+
 def short_name(company: str) -> str:
+    """Trim a Maps listing title down to what a person would actually be called.
+
+    Listing titles carry junk that reads badly inside 'القائمون على … الكرام':
+    a branch parenthetical ('… (الرياض - حي اشبيليا)') and bilingual names joined by a
+    dash ('EXAMPLE Facilities Management Company - المثال لادارة المرافق'). Both shipped
+    verbatim into the honorific before this fix.
+    """
     s = company.strip()
-    for _ in range(3):  # peel up to 3 trailing descriptors
+
+    # 1. Drop trailing parentheticals — almost always a branch/location, never the name.
+    s = re.sub(r"\s*[\(（][^)）]*[\)）]\s*$", "", s).strip()
+
+    # 2. Bilingual "English - Arabic" (or the reverse): keep the Arabic side, since the
+    #    whole message is Arabic. Only when exactly one side is Arabic, so we never split
+    #    a legitimately hyphenated name.
+    for sep in (" - ", " – ", " — ", " | ", " / "):
+        if sep in s:
+            left, _, right = s.partition(sep)
+            l_ar, r_ar = bool(_ARABIC.search(left)), bool(_ARABIC.search(right))
+            if l_ar != r_ar:
+                s = (left if l_ar else right).strip()
+            break
+
+    # 3. Peel trailing legal/descriptive suffixes ("للمقاولات العامة", "المحدودة", …).
+    for _ in range(3):
         s2 = _TAIL.sub("", s).strip(" -–—|،,")
         if s2 == s or len(s2) < 3:
             break
@@ -114,12 +148,43 @@ def _email_subject_and_body(vertical: str) -> tuple[str, str]:
     return subject, body
 
 
+_site_facts_cache: dict | None = None
+
+
+def site_opener(lead: dict) -> tuple[str, str]:
+    """(arabic_opener, fact_key) built from the lead's OWN website, or ('','') if none.
+
+    Reads the facts stored by enrich_company_size.py during the sizing crawl — those pages
+    were already fetched and previously discarded. A lead that was never crawled, or whose
+    site published nothing concrete, simply gets the generic vertical line.
+    """
+    global _site_facts_cache
+    if _site_facts_cache is None:
+        try:
+            from enrich_company_size import load_cache
+            _site_facts_cache = load_cache()
+        except Exception:
+            _site_facts_cache = {}
+    entry = _site_facts_cache.get(lead.get("person_id") or "") or {}
+    return site_facts.opener(entry.get("site_facts") or {})
+
+
 def render_lead(lead: dict, use_llm: bool, or_key: str | None) -> dict:
     """Deterministic render for one lead: WA vars + preview, email subject/body."""
     vertical = lead["sector"]
     vkey = VKEY[vertical]
     company = lead["company"]
-    honorific = (f"الأستاذ {lead['contact_name']}" if lead.get("contact_name")
+    # A name only personalises the greeting if it is written in the language of the letter.
+    # Snov returns Latin transliterations, and a Latin name inside an otherwise Arabic
+    # message reads worse than no name at all — it looks
+    # like a mail-merge failure to the exact executive we are trying to impress. So a
+    # non-Arabic contact name falls back to the collective honorific until someone writes
+    # the Arabic form into the CRM. We never transliterate it ourselves: a surname can map
+    # to several plausible Arabic spellings, and picking the wrong one is worse than
+    # being generic.
+    contact = (lead.get("contact_name") or "").strip()
+    use_name = bool(contact) and bool(_ARABIC.search(contact))
+    honorific = (f"الأستاذ {contact}" if use_name
                  else f"القائمون على {short_name(company)} الكرام")
     pain_line = lead.get("pain_line") or lead.get("pain_hints") or ""
     block, meta = lina_compose.compose_block(vkey, pain_line, use_llm=use_llm, key=or_key)
@@ -134,12 +199,21 @@ def render_lead(lead: dict, use_llm: bool, or_key: str | None) -> dict:
     if lead.get("email"):
         email_subject, body = _email_subject_and_body(vertical)
         # noun-phrase pain: the matched category's pain fits "تعاني من …"; generals don't.
-        pain_phrase = (meta.get("pain") if meta.get("source") not in (None, "general")
+        # Same defect as the render label: meta has no 'source' key, so the old
+        # meta.get("source") was always None and this ALWAYS took the generic branch —
+        # the email body was never personalised even when a category matched.
+        pain_phrase = (meta["pain"] if meta.get("category")
                        else EMAIL_PAIN[vertical])
+        # {trigger_line} is the generic per-vertical sentence every lead in that vertical
+        # gets. When the company published something concrete about its own scale, lead
+        # with THAT instead: it is specific, true, sourced from their own site, and it sets
+        # up the same pain. Falls back to the generic line whenever no fact was found —
+        # never invents one. See site_facts.py for why review-mined pain was insufficient.
+        opener, opener_key = site_opener(lead)
         fills = {
             "{honorific+name}": honorific,
             "{inbound_context}": "",
-            "{trigger_line}": TRIGGER[vertical],
+            "{trigger_line}": opener or TRIGGER[vertical],
             "{lina_pain}": pain_phrase,
             "{اسم الشركة}": company, "{اسم العيادة}": company, "{اسم المعهد}": company,
         }
@@ -161,7 +235,14 @@ def render_lead(lead: dict, use_llm: bool, or_key: str | None) -> dict:
 
     return {**lead, "wa_template": wa["name"], "wa_vars": wa_vars, "wa_preview": preview,
             "email_subject": email_subject, "email_body": email_body,
-            "phone_intl": phone, "pain_source": meta.get("source", "general")}
+            # meta has 'choice'/'category' — there is no 'source' key, so the old
+            # meta.get("source", "general") printed "general" for EVERY lead regardless of
+            # what was actually selected, hiding real per-lead personalisation.
+            "phone_intl": phone,
+            # Which opener the email actually led with, so the render file shows whether a
+            # lead got a company-specific line or the generic vertical fallback.
+            "opener_source": (site_opener(lead)[1] or "generic"),
+            "pain_source": meta.get("category") or meta.get("choice") or "general"}
 
 
 def write_render_file(rendered: list[dict]) -> None:
@@ -176,14 +257,44 @@ def write_render_file(rendered: list[dict]) -> None:
     open(RENDER_FILE, "w", encoding="utf-8").write("\n".join(parts))
 
 
-def review(rendered: list[dict]) -> list[dict] | None:
+def _confirm(prompt: str, on_unanswerable: str) -> bool:
+    """Ask a yes/no question that FAILS CLOSED when nobody can answer it.
+
+    Every gate in this script protects an irreversible outward-facing act. A prompt that
+    cannot be answered — piped stdin, no TTY, EOF — must therefore mean "no", never "yes".
+    """
+    if not sys.stdin or not sys.stdin.isatty():
+        print(on_unanswerable)
+        return False
+    try:
+        return input(prompt).strip().lower() == "yes"
+    except (EOFError, KeyboardInterrupt):
+        print(on_unanswerable)
+        return False
+
+
+def review(rendered: list[dict], assume_yes: bool = False) -> list[dict] | None:
     """Compact terminal review. Returns the approved subset, or None if aborted."""
     print(f"\nFull render written to {os.path.basename(RENDER_FILE)} — open it to read every message.")
     print(f"\n{'#':>2} {'vertical':24} {'company':38} {'WA':>2} {'email':28} pain")
     for i, r in enumerate(rendered, 1):
         print(f"{i:>2} {r['sector'][:24]:24} {r['company'][:38]:38} "
               f"{'✓' if r['phone_intl'] else '✗':>2} {(r['email'] or '-')[:28]:28} {r['pain_source']}")
-    raw = input("\nApprove: Enter = ALL | numbers to SKIP (e.g. 2,5) | q = abort: ").strip().lower()
+    if assume_yes:
+        print(f"\n--yes: approving all {len(rendered)} lead(s) without prompting.")
+        return list(rendered)
+    # A piped newline READS FINE and used to mean "Enter = ALL", so `printf '\n' | …`
+    # silently approved every lead with no human in the loop. Approval of an irreversible
+    # send must come from a terminal or from an explicit --yes, never from a pipe.
+    if not sys.stdin or not sys.stdin.isatty():
+        print("\nstdin is not a terminal — refusing to infer approval. Pass --yes to approve all.")
+        return None
+    try:
+        raw = input("\nApprove: Enter = ALL | numbers to SKIP (e.g. 2,5) | q = abort: ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        # Never read an unanswerable prompt as blanket approval of every lead.
+        print("\nNo answer possible on this stdin — aborting. Pass --yes to approve all.")
+        return None
     if raw in ("q", "quit", "n", "no"):
         return None
     skip = {int(x) for x in re.findall(r"\d+", raw)}
@@ -227,9 +338,14 @@ body EXACTLY as given. The body carries no signature (Snov auto-appends it). Max
 
 ### 3. DO NOT touch the CRM. Status updates are handled outside this task.
 
-### 4. REPORT — final output, machine-readable, one line per lead:
+### 4. REPORT — final output, machine-readable, ONE LINE PER LEAD, exactly this shape:
 RESULT | <person_id> | wa=<sent|failed:reason> | email=<sent|failed:reason|none>
 Then the totals, then [DONE].
+
+Emit one RESULT line for EVERY lead in the JSON, including failures and skips. Do NOT
+summarise them into a table, and do not wrap the lines in bold or code fences. A lead
+with no RESULT line is treated as "we cannot tell whether this business was messaged",
+which forces a manual reconciliation and risks messaging them a second time.
 
 ## LEADS (the complete, final list — nothing else is in scope)
 ```json
@@ -238,13 +354,38 @@ Then the totals, then [DONE].
 """
 
 
-def apply_crm_updates(report: str) -> tuple[int, int]:
-    """Parse RESULT lines and PATCH leadStatus locally. Returns (ok, failed)."""
+def apply_crm_updates(report: str, expected_ids: list[str] | None = None) -> tuple[int, int]:
+    """Parse RESULT lines and PATCH leadStatus locally. Returns (ok, failed).
+
+    `expected_ids` are the person_ids we submitted for this vertical. Tariq's report is
+    free-form prose and DOES sometimes describe the sends in a markdown table while omitting
+    the RESULT lines entirely — that happened on the 2026-07-19 Training run: 3 messages went
+    out, the regex matched nothing, and the summary read a harmless-looking "0 ok, 0 failed"
+    while the CRM still said Not Contacted. Those leads were then one re-run away from being
+    messaged twice. Zero parsed results is therefore an ALARM, not a quiet no-op.
+    """
     hdr = {"Authorization": f"Bearer {nav_env.env('TWENTY_TOKEN')}",
            "Content-Type": "application/json"}
     ok = fail = 0
-    for pid, wa, em in re.findall(
-            r"RESULT\s*\|\s*([0-9a-f-]{36})\s*\|\s*wa=(\S+)\s*\|\s*email=(\S+)", report):
+    seen: set[str] = set()
+
+    # Two accepted shapes. The RESULT line is what we ASK for, but the runtime is an LLM and
+    # the format is a request, not a contract — on 2026-07-19 and again on 2026-07-20 it
+    # reported a markdown table instead and 6 confirmed sends went unrecorded. Rather than
+    # keep re-asking, read the table too: an unparsed report is indistinguishable from a
+    # failed send, and the recovery for that is messaging a real business twice.
+    #   RESULT | <uuid> | wa=sent | email=sent
+    #   | <uuid> | sent | sent |          <- table row, header/separator rows ignored
+    rows = re.findall(
+        r"RESULT\s*\|\s*([0-9a-f-]{36})\s*\|\s*wa=(\S+)\s*\|\s*email=(\S+)", report)
+    rows += re.findall(
+        r"^\s*\|\s*([0-9a-f-]{36})\s*\|\s*([^|\s]+)\s*\|\s*([^|\s]+)\s*\|",
+        report, re.M)
+
+    for pid, wa, em in rows:
+        if pid in seen:
+            continue
+        seen.add(pid)
         status = ("Emailed" if em.startswith("sent")
                   else "WhatsApped" if wa.startswith("sent") else None)
         if not status:
@@ -254,15 +395,38 @@ def apply_crm_updates(report: str) -> tuple[int, int]:
         ok += r.status_code < 300
         fail += r.status_code >= 300
         print(f"  {'OK ' if r.status_code < 300 else 'ERR'} CRM {pid[:8]} -> {status}")
+
+    missing = [p for p in (expected_ids or []) if p not in seen]
+    if missing:
+        print("\n  !! CRM STATUS NOT RECORDED for "
+              f"{len(missing)} of {len(expected_ids)} lead(s) in this batch.")
+        print("     The task report carried no parsable RESULT line for them, so we CANNOT "
+              "confirm\n     whether they were messaged. They still read 'Not Contacted' and a "
+              "re-run would\n     message them AGAIN. Reconcile before the next send:")
+        for p in missing:
+            print(f"       PATCH {CRM_BASE}/rest/people/{p}  {{\"leadStatus\": \"...\"}}")
     return ok, fail
 
 
-def preflight_key_check() -> bool:
+def preflight_key_check(force_low_balance: bool = False) -> bool:
     """Fault-1 guard: warn BEFORE submitting send tasks if the cloud's LLM key is near its
-    rolling cap or its account is nearly drained (a dead key = silent pending stalls)."""
-    key = nav_env.env("MY_OPENROUTER_KEY")
+    rolling cap or its account is nearly drained (a dead key = silent pending stalls).
+
+    Checks OPENROUTER_API_KEY — the key the CLOUD RUNTIME actually spends when it executes
+    these send tasks. It previously checked MY_OPENROUTER_KEY, a personal key the runtime
+    never touches; once that key died the guard silently no-op'd through its own except
+    branch, leaving the exact failure it exists to prevent completely unguarded.
+
+    THE DECISION IS DELIBERATELY OUTSIDE THE try. It used to sit inside, so a prompt that
+    raised — EOF, closed stdin, no TTY — was swallowed by `except Exception` and fell
+    through to `return True`: the guard FAILED OPEN and submitted the very sends it had
+    just flagged. That happened on 2026-07-19 (153 leads against a $0.91 balance; saved
+    only by the provider 402ing). Only the network probe is tolerant now; an unanswerable
+    prompt fails CLOSED.
+    """
+    key = nav_env.env("OPENROUTER_API_KEY")
     if not key:
-        print("(!) MY_OPENROUTER_KEY not in .env — cannot pre-check the cloud key balance.")
+        print("(!) OPENROUTER_API_KEY not in .env — cannot pre-check the cloud key balance.")
         return True
     try:
         hdr = {"Authorization": f"Bearer {key}"}
@@ -270,15 +434,24 @@ def preflight_key_check() -> bool:
         cr = httpx.get("https://openrouter.ai/api/v1/credits", headers=hdr, timeout=15).json()["data"]
         remaining = d.get("limit_remaining")
         account_left = (cr.get("total_credits") or 0) - (cr.get("total_usage") or 0)
-        print(f"Key pre-flight: window remaining="
-              f"{'∞' if remaining is None else f'${remaining:.2f}'} | account left ${account_left:.2f}")
-        if (remaining is not None and remaining < 0.5) or account_left < 1.0:
-            print("(!) The key is nearly exhausted — cloud tasks will stall SILENTLY in "
-                  "pending (see POSTMORTEM_2026-07-14 Fault 1). Top up before sending.")
-            return input("Submit send tasks anyway? (yes/N) ").strip().lower() == "yes"
     except Exception as e:
+        # Probe failure is not evidence of a bad key — stay permissive here only.
         print(f"(key pre-flight skipped: {e})")
-    return True
+        return True
+
+    print(f"Key pre-flight: window remaining="
+          f"{'∞' if remaining is None else f'${remaining:.2f}'} | account left ${account_left:.2f}")
+    if not ((remaining is not None and remaining < 0.5) or account_left < 1.0):
+        return True
+
+    print("(!) The key is nearly exhausted — cloud tasks will stall SILENTLY in "
+          "pending (see POSTMORTEM_2026-07-14 Fault 1). Top up before sending.")
+    if force_low_balance:
+        print("    --force-low-balance given: submitting anyway.")
+        return True
+    return _confirm("Submit send tasks anyway? (yes/N) ",
+                    "    Refusing to submit on a drained key. Re-run on a terminal, or "
+                    "pass --force-low-balance to override deliberately.")
 
 
 def _fake_leads() -> list[dict]:
@@ -293,6 +466,41 @@ def _fake_leads() -> list[dict]:
     ]
 
 
+def resolve_openrouter_key() -> str | None:
+    """Pick a WORKING OpenRouter key, and say out loud which one and why.
+
+    MY_OPENROUTER_KEY is the intended personal key for the pain-classification pass.
+    OPENROUTER_API_KEY is the SHARED key the cloud runtime uses and carries a rolling
+    daily cap — draining it is what stalled the pipeline on 2026-07-14. So the fallback
+    is allowed (classification is a few cheap calls) but is never silent: if we are
+    spending the cloud's budget, that must appear in the operator's console.
+    """
+    primary = nav_env.env("MY_OPENROUTER_KEY")
+    if primary and _key_ok(primary):
+        print("  pain-classification key: MY_OPENROUTER_KEY")
+        return primary
+    if primary:
+        print("  !! MY_OPENROUTER_KEY is INVALID (401) — not usable")
+    shared = nav_env.env("OPENROUTER_API_KEY")
+    if shared and _key_ok(shared):
+        print("  !! FALLING BACK to OPENROUTER_API_KEY — this is the SHARED cloud key with a\n"
+              "     rolling daily cap. Classification is cheap, but fix MY_OPENROUTER_KEY so\n"
+              "     routine runs stop drawing on the cloud runtime's budget.")
+        return shared
+    print("  !! No working OpenRouter key — semantic pain pass DISABLED "
+          "(leads fall back to general copy).")
+    return None
+
+
+def _key_ok(key: str) -> bool:
+    try:
+        r = httpx.get("https://openrouter.ai/api/v1/key",
+                      headers={"Authorization": f"Bearer {key}"}, timeout=20)
+        return r.status_code == 200
+    except Exception:
+        return False
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--verticals", default=",".join(ALL_VERTICALS))
@@ -300,27 +508,80 @@ def main() -> None:
     ap.add_argument("--self-test", action="store_true", help="render fake leads, no CRM/cloud")
     ap.add_argument("--llm-pain", action="store_true",
                     help="allow the cheap LLM step for novel pain lines (MY_OPENROUTER_KEY)")
+    ap.add_argument("--yes", action="store_true",
+                    help="approve every rendered lead without prompting (for automation). "
+                         "Does NOT override the key-balance guard — that needs "
+                         "--force-low-balance, so a drained key still stops an unattended run.")
+    ap.add_argument("--email-only", action="store_true",
+                    help="send email but NOT WhatsApp. Use when a newly found personal "
+                         "email is the only thing that changed: the phone on the record is "
+                         "the company switchboard from the Maps listing, not the person's "
+                         "mobile, so a WhatsApp would repeat a message that number already "
+                         "received — spam to them, and a hit to Meta template quality.")
+    ap.add_argument("--enrich", action="store_true",
+                    help="run Snov email enrichment for Not Contacted CRM leads. SPENDS "
+                         "CREDITS (~1 per lead without an email). Off by default.")
+    ap.add_argument("--min-employees", type=int, default=0,
+                    help="only leads CONFIRMED at this headcount or above, per "
+                         "company_size.json (operator rule 2026-07-20: 50+ = high "
+                         "priority). Leads whose size was never established are "
+                         "EXCLUDED — unknown is not treated as passing.")
+    ap.add_argument("--force-low-balance", action="store_true",
+                    help="submit send tasks even when the cloud key is nearly exhausted. "
+                         "Expect silent pending stalls (POSTMORTEM_2026-07-14 Fault 1).")
     args = ap.parse_args()
     verticals = [v.strip() for v in args.verticals.split(",") if v.strip()]
     bad = [v for v in verticals if v not in ALL_VERTICALS]
     if bad:
         raise SystemExit(f"Unknown vertical(s) {bad}; valid: {ALL_VERTICALS}")
-    or_key = nav_env.env("MY_OPENROUTER_KEY") if args.llm_pain else None
+    or_key = resolve_openrouter_key() if args.llm_pain else None
 
     if args.self_test:
         leads = _fake_leads()
     else:
         print("CRM prep (local, deterministic)…")
         prep.normalize_crm_people()
-        prep.enrich_crm_not_contacted()
+        # enrich_crm_not_contacted() SPENDS SNOV CREDITS — one domain lookup per Not
+        # Contacted lead without an email (29 lookups on 2026-07-20, unannounced, which is
+        # how this flag came to exist). Credits are budgeted per-item by the operator, so
+        # a render must never quietly consume them: opt in with --enrich.
+        if args.enrich:
+            prep.enrich_crm_not_contacted()
+        else:
+            print("  (skipping Snov email enrichment — pass --enrich to spend credits)")
         leads = prep.not_contacted_leads(verticals)
     if not leads:
         print("No Not Contacted leads in those verticals — nothing to do.")
         return
 
+    if args.min_employees:
+        # Fail CLOSED: a lead we never sized does not pass the filter. The whole point of
+        # the 50+ rule is that it is confirmed per-lead (05 "Sizing a company"), so an
+        # unknown must never ride along on the assumption that it might qualify.
+        from enrich_company_size import load_cache
+        sizes = load_cache()
+        before = len(leads)
+        leads = [l for l in leads
+                 if (sizes.get(l["person_id"], {}).get("employees") or 0) >= args.min_employees]
+        print(f"  size filter: {len(leads)}/{before} leads confirmed at "
+              f"{args.min_employees}+ employees (unsized leads excluded)")
+        if not leads:
+            print("No leads meet the size threshold — run scripts/enrich_company_size.py "
+                  "(free) then enrich_company_size_snov.py to size more.")
+            return
+
     rendered = [render_lead(l, args.llm_pain, or_key) for l in leads]
+    if args.email_only:
+        # build_send_task sends WhatsApp to every lead with a non-empty "to", so clearing
+        # the number here is what actually suppresses the channel. Leads with no email are
+        # dropped rather than silently sent nothing at all.
+        without_email = [r["company"] for r in rendered if not r.get("email_body")]
+        rendered = [{**r, "phone_intl": ""} for r in rendered if r.get("email_body")]
+        print(f"  --email-only: WhatsApp suppressed for {len(rendered)} lead(s)")
+        for company in without_email:
+            print(f"    skipped (no email, would have had nothing to send): {company[:44]}")
     write_render_file(rendered)
-    approved = review(rendered)
+    approved = review(rendered, assume_yes=args.yes)
     if approved is None or not approved:
         print("Aborted — nothing sent.")
         return
@@ -329,7 +590,7 @@ def main() -> None:
               f"no tasks created. Render: {RENDER_FILE}")
         return
 
-    if not preflight_key_check():
+    if not preflight_key_check(force_low_balance=args.force_low_balance):
         print("Aborted — nothing sent.")
         return
 
@@ -340,6 +601,7 @@ def main() -> None:
         by_vertical.setdefault(r["sector"], []).append(r)
 
     watching = {}
+    submitted_ids: dict[str, list[str]] = {}
     for vertical, group in by_vertical.items():
         t = cloud.tasks.create(
             nav_env.CLOUD_WORKFORCE_ID,
@@ -349,6 +611,7 @@ def main() -> None:
                       "leads": len(group)},
         )
         watching[vertical] = t.id
+        submitted_ids[vertical] = [r["person_id"] for r in group]
         print(f"✓ {vertical}: send task {t.id} ({len(group)} leads)")
 
     print("\nWatching sends (Ctrl+C safe — tasks keep running in the cloud)…")
@@ -367,7 +630,7 @@ def main() -> None:
                 report = t.result or ""
                 print(report[:2500])
                 if s == "done":
-                    ok, fail = apply_crm_updates(report)
+                    ok, fail = apply_crm_updates(report, submitted_ids.get(vertical))
                     print(f"CRM updates: {ok} ok, {fail} failed")
                 del watching[vertical]
     if watching:

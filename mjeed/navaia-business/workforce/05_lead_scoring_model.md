@@ -26,7 +26,7 @@ should be folded in after 50–100 sends to recalibrate.
 | **Manual booking/inquiry channel** (phone/DM/form, active IG/WhatsApp business) | +20 | Lead's website / IG / Google listing | No online booking widget; phone/WhatsApp listed; IG active |
 | **Has verified email** | +20 | Snov.io verification result | `email_status == "verified"` or `"found_unverified"` with `.sa` domain (treated as likely valid per Snov caveat) |
 | **Trigger event / review pain** (reviews citing "no reply", missed calls, slow booking) | +15 | **`scripts/enrich_reviews.py`** — trust-locked to the lead's own Google reviews (exact place_id + phone match) → `leads_reviews.csv` + CRM | Non-empty `pain_line` for the lead. Also surfaced as `{trigger_line}` in the outreach opener. |
-| **Employee count ~3–50** (loses real money to misses, fast owner decision) | +10 | Google Places / LinkedIn | `employeeCount` in [3, 50] |
+| **Employee count 50+** (operator rule 2026-07-20 — larger contract value, real ops load) | +10 | `scripts/enrich_company_size.py` (company's own website) | Self-published headcount claim ≥ 50. See "Sizing a company" below — this is NOT inferable and must never be guessed. |
 | **Has website / LinkedIn** (digital maturity) | +10 | Lead's website URL, LinkedIn | Non-empty `domainName` or `linkedinLink` |
 | **Named decision-maker identified** | +10 | Enrichment output | Person record exists with `decisionMaker: true` |
 
@@ -64,6 +64,39 @@ booking/inquiry channel that our product can directly address:
 > tightest vertical fit for the product. Other verticals can still score high
 > via the other signals (e.g., Finance + verified email + trigger event +
 > named decision-maker = 55+).
+
+---
+
+## Sizing a company (the 50+ rule)
+
+> **Changed 2026-07-20 by operator decision.** The old rule was "3–50 employees, fast
+> owner decision". It is now **50+**: larger contract value and a real operational load
+> to automate. The old band is dead — do not reintroduce it.
+
+**There is no headcount field in the pipeline.** Twenty's `employees` is empty on every
+one of Mjeed's companies and no LinkedIn URLs are stored. Sizing is therefore a
+deliberate, per-lead step — not something the ranker knows for free.
+
+Sources, in the order they should be tried (researched 2026-07-20):
+
+| Source | Use it? | Why |
+|--------|---------|-----|
+| **Company's own website** | ✅ **Primary** | Self-published, public, no ToS conflict. `scripts/enrich_company_size.py` reads homepage + about/من-نحن for an explicit claim ("over 50 certified professionals"). Free. |
+| **Snov.io company-by-domain** | ⚠️ **Paid fallback** | Licensed B2B data, ~1 credit/domain. Only for leads the crawl could not size, and only on explicit operator approval — the crawl script prints the candidate list and cost, and spends nothing itself. |
+| **LinkedIn** | ❌ **Never** | Scraping violates the User Agreement regardless of tooling; 2026 enforcement is fingerprint/IP-based; LinkedIn sued Proxycurl out of business in 2025 for this exact activity. A footer LinkedIn URL may be *recorded* for a human to open — never fetched by a script. |
+| **Wathq / GOSI / Qiwa** | ❌ **Not for prospecting** | Wathq API 18 does serve GOSI employment data, but it is consent-gated to the establishment itself and is personal data under PDPL (penalties to SAR 5M). Lawful for checking our OWN headcount; not a prospect's. |
+
+**GOSI's official bands** are the reference definition: 1–5 small, 6–49 micro,
+**50–249 medium**, 250+ large. So "50+" means "medium or larger" in Saudi regulatory terms.
+
+### Size proxy vs. size fact
+
+`scripts/rank_priority_leads.py` ranks all Not Contacted leads for free using a **size
+proxy** — branch count (same business across multiple pool listings), Saudi legal form
+(`مجموعة`/`قابضة` > `شركة` > `مكتب`/`مؤسسة`), owning a real domain vs. an aqar.fm page,
+and review volume. The proxy is a **hypothesis that orders the crawl queue**. It is never
+a headcount and must never be written to `leadScore` as if it were one. A lead the crawl
+cannot size is `unknown` — not "small", not "large".
 
 ---
 
