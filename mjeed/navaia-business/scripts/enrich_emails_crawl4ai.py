@@ -32,6 +32,7 @@ import httpx
 
 import nav_env
 import pipeline_prep as prep
+import polite_fetch
 from agent_scraping_skill import agent_scraping_skill
 
 CRM = "https://crm.navaia.sa"
@@ -74,10 +75,14 @@ def best_email(site: str, budget_pages: int = 4) -> tuple[str, list[str], list[s
     for path in CONTACT_PATHS[:budget_pages]:
         url = urljoin(site.rstrip("/") + "/", path) if path else site
         tried.append(path or "/")
-        r = agent_scraping_skill(url)
-        if r.get("status") != "success":
+        # Through polite_fetch, NOT agent_scraping_skill directly. This function used to
+        # call the scraper with no robots.txt check and no rate limiting at all, so it
+        # crawled every site flat out (found 2026-07-20). fetch() returns '' for a
+        # disallowed or dead page, which this loop already treats as "nothing here".
+        markdown = polite_fetch.fetch(url)
+        if not markdown:
             continue
-        for e in harvest(r.get("markdown", ""), domain):
+        for e in harvest(markdown, domain):
             if e not in all_found:
                 all_found.append(e)
         if all_found:                     # stop as soon as we have something real

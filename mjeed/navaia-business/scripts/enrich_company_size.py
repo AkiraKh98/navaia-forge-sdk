@@ -97,79 +97,13 @@ def _num(s: str) -> int:
 
 
 # --- Politeness layer -------------------------------------------------------------
-# Researched 2026-07-20. Two rules carry essentially all the legal and ethical weight:
-#   1. Honour robots.txt. Fetching robots.txt and then ignoring Crawl-delay reads as
-#      worse faith than never fetching it, so we obey what we read.
-#   2. Rate-limit. No scraper that respected Crawl-delay and backed off on 429 has been
-#      found liable under CFAA "damage" or trespass-to-chattels. For small sites the
-#      documented norm is one request per 10-15s, which is what DEFAULT_DELAY encodes.
-# These are cheap. We are crawling a handful of SMB sites, not harvesting the web.
-DEFAULT_DELAY = 12.0  # seconds between requests to the SAME host
-_robots_cache: dict[str, tuple[object, float]] = {}
-_last_hit: dict[str, float] = {}
-
-
-def _robots(base: str) -> tuple[object, float]:
-    """(parser, crawl_delay) for a host. A missing/broken robots.txt means 'allowed'."""
-    host = urlparse(base).netloc
-    if host in _robots_cache:
-        return _robots_cache[host]
-    rp = RobotFileParser()
-    rp.set_url(urljoin(base, "/robots.txt"))
-    delay = DEFAULT_DELAY
-    try:
-        rp.read()
-        stated = rp.crawl_delay(USER_AGENT) or rp.crawl_delay("*")
-        if stated:
-            delay = max(float(stated), 1.0)  # obey the site's own number
-    except Exception:
-        rp = None  # unreachable robots.txt is not a prohibition
-    _robots_cache[host] = (rp, delay)
-    return rp, delay
-
-
-def _allowed(url: str) -> bool:
-    rp, _ = _robots(url)
-    if rp is None:
-        return True
-    try:
-        return rp.can_fetch(USER_AGENT, url)
-    except Exception:
-        return True
-
-
-def _throttle(url: str) -> None:
-    """Sleep so we never hit the same host faster than its crawl delay."""
-    host = urlparse(url).netloc
-    _, delay = _robots(url)
-    elapsed = time.time() - _last_hit.get(host, 0.0)
-    if elapsed < delay:
-        time.sleep(delay - elapsed)
-    _last_hit[host] = time.time()
-
-
-def _scrape(url: str) -> str:
-    """Markdown for one URL, or '' on any failure. Never raises — a dead site is a miss.
-
-    Returns '' for a robots.txt-disallowed path too: a lead we are not permitted to crawl
-    is recorded as unknown, exactly like an unreachable one. We do not crawl it anyway.
-    """
-    if not _allowed(url):
-        return ""
-    _throttle(url)
-    try:
-        res = agent_scraping_skill(url)
-    except Exception:
-        return ""
-    if res.get("status") != "success":
-        return ""
-    md = res.get("markdown") or ""
-    # Belt-and-braces against the 2026-07-20 defect: a failed crawl used to arrive here as
-    # the 4-character string "None", which is truthy and counted as a page that simply had
-    # no headcount on it. Never let a non-page masquerade as a silent one.
-    if md.strip() in ("", "None"):
-        return ""
-    return _norm(md)
+# Moved to polite_fetch.py so every crawler in the repo shares one implementation. Keeping
+# it here meant enrich_emails_crawl4ai.py crawled with no robots check and no delay at all.
+# Re-exported under the old private names so existing callers and tests keep working.
+from polite_fetch import (  # noqa: E402
+    DEFAULT_DELAY, allowed as _allowed, fetch as _scrape, robots as _robots,
+    throttle as _throttle,
+)
 
 
 def _headcount_from_site(markdown: str) -> tuple[int | None, str]:
