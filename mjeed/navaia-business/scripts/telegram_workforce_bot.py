@@ -188,6 +188,36 @@ class TG:
             body["reply_markup"] = {"inline_keyboard": buttons}
         self.c.post(f"{self.base}/sendMessage", json=body)
 
+    def send_long(self, text: str, header: str = "") -> None:
+        """Send arbitrarily long text across as many messages as needed — no truncation.
+
+        Telegram caps a message near 4096 chars; the batch-copy digest of a whole outreach
+        run is longer than that, and the operator asked to be copied on EVERY message, so a
+        silent [:3500] cut defeats the point. Split on blank lines where possible so a single
+        rendered message is never sliced mid-body.
+        """
+        text = (text or "").strip()
+        if not text:
+            return
+        limit = 3800
+        chunks, buf = [], ""
+        for para in text.split("\n\n"):
+            piece = (para + "\n\n")
+            if len(buf) + len(piece) > limit and buf:
+                chunks.append(buf.rstrip())
+                buf = ""
+            # a single paragraph longer than the limit gets hard-split
+            while len(piece) > limit:
+                chunks.append(piece[:limit])
+                piece = piece[limit:]
+            buf += piece
+        if buf.strip():
+            chunks.append(buf.rstrip())
+        total = len(chunks)
+        for i, ch in enumerate(chunks, 1):
+            tag = f"{header} (part {i}/{total})\n" if (header and total > 1) else (header + "\n" if header else "")
+            self.send(tag + ch)
+
     def answer(self, cq_id: str, text: str = "") -> None:
         self.c.post(f"{self.base}/answerCallbackQuery", json={"callback_query_id": cq_id, "text": text})
 
@@ -237,6 +267,7 @@ HELP = (
     "• /send — approve outreach WhatsApp sends\n"
     "• /leads — CRM pipeline health: lead counts by status and vertical\n"
     "• /lead <name|phone> — find a specific lead in the CRM\n"
+    "• /copy — get the FULL rendered copy of a batch (what was sent), untruncated, here in Telegram\n"
     "• /mode — switch sends between 🧪 TEST (to your number) and 🔴 LIVE (real leads), no restart\n"
     "• /menu — buttons · /help — this guide · /stop — stop the bot\n\n"
     "APPROVALS (human-in-the-loop)\n"
@@ -341,10 +372,11 @@ def main() -> None:
                                        metadata={"kind": "outreach_existing",
                                                  "approval_gate": "hitl_any_channel",
                                                  "source": "telegram"})
-                tracked[t.id] = {"agent": "Ahmed", "kind": "task", "last": None,
+                tracked[t.id] = {"agent": "Ahmed", "kind": "outreach", "last": None,
                                  "lead": None, "born": time.time()}
                 tg.send(f"🚀 Outreach task created (`{str(t.id)[:8]}…`) — Ahmed is on it. "
-                        "The rendered messages will arrive here for your approval.")
+                        "The rendered messages will arrive here for your approval, and the full "
+                        "batch copy when it completes.")
             except SystemExit as e:
                 tg.send(f"⚠️ Pipeline: {e}")
             except Exception as e:
@@ -403,14 +435,22 @@ def main() -> None:
     def report_result(name, task, meta):
         s = str(task.status).lower()
         res = (task.result or "").replace("[DONE]", "").strip()
+        copy_btn = [[{"text": "📋 Full copy", "callback_data": f"copy:{task.id}"}]]
         if s == "done":
             if meta.get("kind") == "send" and meta.get("lead") and not state["to_me"]:
                 crm = "  · CRM: WhatsApped ✅" if mark_whatsapped(meta["lead"]["to"]) else "  · CRM update failed"
                 tg.send(f"✅ Sent — *{meta['lead']['name']}*{crm}\n{res[:800]}")
+            elif meta.get("kind") == "outreach":
+                # Zero-cost send-copy: deliver the WHOLE rendered batch to the operator here,
+                # untruncated, instead of an extra Snov/WhatsApp send per lead.
+                tg.send(f"✅ *Outreach batch complete* — full copy of what was rendered/sent below.")
+                tg.send_long(res, header="📋 Batch copy")
             else:
-                tg.send(f"💬 *{name}*:\n{res[:3500]}" if res else f"✅ *{name}* finished (no text).")
+                tg.send(f"💬 *{name}*:\n{res[:3500]}" if res else f"✅ *{name}* finished (no text).",
+                        buttons=copy_btn if len(res) > 3500 else None)
         elif s == "failed":
-            tg.send(f"❌ *{name}* failed.\n{res[:1500]}")
+            tg.send(f"❌ *{name}* failed.\n{res[:1500]}",
+                    buttons=copy_btn if len(res) > 1500 else None)
         else:
             tg.send(f"🚫 *{name}* {s}.")
 
@@ -619,10 +659,20 @@ def main() -> None:
         if not res:
             tg.send("(no output yet)")
         else:
-            for i in range(0, min(len(res), 10500), 3500):
-                tg.send(res[i:i + 3500])
-            if len(res) > 10500:
-                tg.send("… (output truncated)")
+            preview = res[:3500]
+            tg.send(preview, buttons=[[{"text": "📋 Full copy", "callback_data": f"copy:{tid}"}]]
+                    if len(res) > 3500 else None)
+
+    def full_copy(tid):
+        """Post a task's ENTIRE result to Telegram, chunked — the persistent batch copy."""
+        try:
+            t = cloud.tasks.get(tid)
+        except Exception as e:
+            tg.send(f"couldn't fetch task: {e}"); return
+        res = (t.result or "").replace("[DONE]", "").strip()
+        if not res:
+            tg.send("(no output to copy yet)"); return
+        tg.send_long(res, header=f"📋 Copy — {str(t.title)[:50]}")
         if s in WAITING_STATES:
             hint = "This task asks a question — tap ✍️ Answer to reply:" if s == "waiting_question" \
                 else "This task is waiting on you:"
@@ -717,6 +767,7 @@ def main() -> None:
                         {"text": "✅ Completed", "callback_data": "tasks:done"},
                         {"text": "📋 All", "callback_data": "tasks:all"}]])
                 elif data.startswith("taskview:"): view_task(data.split(":", 1)[1])
+                elif data.startswith("copy:"): full_copy(data.split(":", 1)[1])
                 elif data.startswith("tasks:"): list_tasks(data.split(":", 1)[1])
                 elif data == "menu:report":
                     start_task(agents.get("Rashid"), "Rashid",
@@ -814,6 +865,16 @@ def main() -> None:
             if low.startswith("/lead"):
                 arg = text[5:].strip()
                 lead_search(arg) if arg else crm_leads(); continue
+            if low.startswith("/copy"):
+                try:
+                    recent = cloud.tasks.list(CLOUD_WF)[:8]
+                except Exception as e:
+                    tg.send(f"copy error: {e}"); continue
+                if not recent:
+                    tg.send("No tasks to copy."); continue
+                rows = [[{"text": f"📋 {str(t.title)[:40]}", "callback_data": f"copy:{t.id}"}]
+                        for t in recent]
+                tg.send("Pick a batch to copy in full:", buttons=rows); continue
             if low.startswith("/mode"): mode_menu(); continue
             if low.startswith("/chats"): list_chats(); continue
             if low.startswith("/chat"):
