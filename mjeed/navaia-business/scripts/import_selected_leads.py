@@ -26,6 +26,7 @@ import os
 import re
 import sys
 import time
+from datetime import date
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 if (sys.stdout.encoding or "").lower().replace("-", "") != "utf8":
@@ -133,9 +134,28 @@ def create_company(l: dict, vertical: str) -> str | None:
     return r.json().get("data", {}).get("createCompany", {}).get("id")
 
 
+def effective_phone(l: dict) -> str:
+    """Person-first: the named person's mobile if enrichment found one, else the company phone.
+
+    This is the phone/person doctrine (operator 2026-07-20) made concrete — a real person's
+    number wins; the company number is only the fallback.
+    """
+    person = l.get("person") or {}
+    return intl_phone(person.get("phone") or "") or intl_phone(l.get("phone", ""))
+
+
 def create_person(l: dict, vertical: str, company_id: str) -> str | None:
+    # Person-first: use the named contact from enrichment when present; otherwise fall back to
+    # the company as the record (the old behaviour), so a lead with no named person still lands.
+    person = l.get("person") or {}
+    pname = (person.get("name") or "").strip()
+    if pname:
+        toks = pname.split()
+        first, last = toks[0], " ".join(toks[1:])
+    else:
+        first, last = l["name"], ""
     body = {
-        "name": {"firstName": l["name"], "lastName": ""},
+        "name": {"firstName": first, "lastName": last},
         "companyId": company_id,
         "sector": vertical,
         "leadSource": l.get("lead_source", ""),
@@ -143,8 +163,12 @@ def create_person(l: dict, vertical: str, company_id: str) -> str | None:
         "leadScore": lead_score(l),
         "createdBy": CREATED_BY,
     }
-    if (ph := intl_phone(l.get("phone", ""))):
+    if (role := (person.get("role") or "").strip()):
+        body["jobTitle"] = role
+    if (ph := effective_phone(l)):
         body["phones"] = {"primaryPhoneNumber": ph}
+    if (em := (person.get("email") or "").strip()):
+        body["emails"] = {"primaryEmail": em}
     r = httpx.post(f"{CRM}/rest/people", headers=headers(), json=body, timeout=30)
     if r.status_code not in (200, 201):
         print(f"    ERR person HTTP {r.status_code}: {r.text[:160]}")
@@ -152,11 +176,81 @@ def create_person(l: dict, vertical: str, company_id: str) -> str | None:
     return r.json().get("data", {}).get("createPerson", {}).get("id")
 
 
+def import_from_pool(pool_path: str, dry_run: bool) -> None:
+    """Migrate the enriched compact pool into the CRM, deduped and idempotent.
+
+    - Person-first fields via create_person/effective_phone.
+    - Dedup: skip any lead whose effective phone is ALREADY on a Mjeed CRM person (paginated
+      read — import has no upsert, so a duplicate here is a real duplicate in the shared CRM).
+    - Idempotent: every processed lead is marked imported_crm in the pool file (with the new
+      ids, or {"skipped": "already_in_crm"}), so a re-run resumes and the laptop pool drains.
+    """
+    with io.open(pool_path, encoding="utf-8") as f:
+        pool = json.load(f)
+    grouped = group_pool_by_vertical(pool)
+    pending = sum(len(v) for v in grouped.values())
+    print(f"{pending} un-migrated active-vertical leads in {os.path.basename(pool_path)}")
+    if not pending:
+        print("nothing to migrate.")
+        return
+
+    existing = existing_crm_phone_keys()
+    print(f"CRM already holds {len(existing)} Mjeed phone(s) — used for dedup.\n")
+
+    made = skipped = 0
+    for vertical, leads in grouped.items():
+        print(f"=== {vertical} ({len(leads)}) ===")
+        for l in leads:
+            phone = effective_phone(l)
+            key = _phone_key(phone)
+            person = (l.get("person") or {}).get("name") or "(company record)"
+            if key and key in existing:
+                skipped += 1
+                l["imported_crm"] = {"skipped": "already_in_crm", "phone": phone}
+                print(f"  skip (in CRM)  {l['name'][:34]:34} {phone}")
+                continue
+            if dry_run:
+                made += 1
+                print(f"  DRY  {l['name'][:30]:30} | {phone or '-':15} | {person[:24]}")
+                continue
+            cid = create_company(l, vertical)
+            if not cid:
+                continue
+            pid = create_person(l, vertical, cid)
+            if not pid:
+                continue
+            made += 1
+            if key:
+                existing.add(key)          # prevent an intra-run duplicate too
+            l["imported_crm"] = {"company_id": cid, "person_id": pid,
+                                 "at": date.today().isoformat(), "phone": phone}
+            print(f"  OK   {l['name'][:30]:30} | {phone or '-':15} | {person[:24]} "
+                  f"| c{cid[:6]} p{pid[:6]}")
+            time.sleep(0.5)                # CRM rate limit
+        # persist after each vertical so an interruption never loses progress
+        if not dry_run:
+            with io.open(pool_path, "w", encoding="utf-8") as f:
+                json.dump(pool, f, ensure_ascii=False, indent=1)
+
+    verb = "would import" if dry_run else "imported"
+    print(f"\n{verb}: {made} | skipped (already in CRM): {skipped} | "
+          f"total considered: {made + skipped}")
+    if not dry_run:
+        print(f"marked in {os.path.basename(pool_path)} — re-run resumes where this left off.")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--src", default="selected_leads.json")
+    ap.add_argument("--from-pool", metavar="ENRICHED_JSON",
+                    help="migrate the enriched compact pool (leads_enriched_people.json) instead "
+                         "of selected_leads.json — deduped, person-first, idempotent")
     args = ap.parse_args()
+
+    if args.from_pool:
+        import_from_pool(args.from_pool, args.dry_run)
+        return
 
     sel = json.load(open(args.src, encoding="utf-8"))
     made = 0

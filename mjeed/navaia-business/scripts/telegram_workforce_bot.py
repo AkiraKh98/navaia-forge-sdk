@@ -311,52 +311,43 @@ def main() -> None:
         tg.send(f"✅ Assigned to *{agent_name}* — working… (you'll get results/approvals here)")
 
     def pipeline_menu():
-        tg.send("🚀 *Fire pipeline* — prep (normalize + Snov enrich + embed templates) runs "
-                "inside the bot, then the cloud takes over. The approval gate arrives HERE "
-                "as an ✍️ Answer card.",
+        tg.send("📣 *Fire outreach* — reads Mjeed's *Not Contacted* leads straight from the "
+                "CRM, fills the approved Touch-1 templates, and stops at the approval gate "
+                "HERE as an ✍️ Answer card. Leads live in the CRM only; the laptop file is no "
+                "longer a source.",
                 buttons=[
-                    [{"text": "📦 New lead batch (RE + Contracting, 15/vertical)",
-                      "callback_data": "pipe:batch"}],
-                    [{"text": "📣 Outreach existing CRM leads (all verticals)",
+                    [{"text": "📣 Outreach Not-Contacted CRM leads (all verticals)",
                       "callback_data": "pipe:outreach"}],
                 ])
 
-    def fire_pipeline(kind):
-        """Run prep + submit in a background thread — Snov enrichment can take minutes
-        and must not block Telegram polling. Same builders as run_pipeline.py."""
+    def fire_pipeline(kind="outreach"):
+        """Build the CRM outreach task in a background thread (prep can take a moment and must
+        not block Telegram polling). The CRM is the ONLY lead source — the laptop lead file is
+        never read (operator decision 2026-07-20). No Snov: build_outreach_task only normalizes
+        and reads the CRM."""
         def run():
             try:
                 import submit_lead_batch as slb
-                if kind == "batch":
-                    pool = os.environ.get("LEADS_FILE") or os.path.join(
-                        os.path.dirname(__file__), "..", "leads_scraped_compact.json")
-                    if not os.path.exists(pool):
-                        tg.send("⚠️ No lead pool file — scrape + distill on the laptop first.")
-                        return
-                    tid = slb.submit_batch(["Real Estate", "Contracting & Facilities"], 15, pool)
-                else:
-                    built = slb.build_outreach_task(slb.ALL_VERTICALS)
-                    if built is None:
-                        tg.send("📣 No *Not Contacted* leads in the CRM — nothing to send.")
-                        return
-                    title, desc = built
-                    t = cloud.tasks.create(CLOUD_WF, title, description=desc,
-                                           agent_id=agents.get("Ahmed"), priority="high",
-                                           metadata={"kind": "outreach_existing",
-                                                     "approval_gate": "hitl_any_channel",
-                                                     "source": "telegram"})
-                    tid = t.id
-                if tid:
-                    tracked[tid] = {"agent": "Ahmed", "kind": "task", "last": None,
-                                    "lead": None, "born": time.time()}
-                    tg.send(f"🚀 Pipeline task created (`{str(tid)[:8]}…`) — Ahmed is on it. "
-                            "The rendered messages will arrive here for your approval.")
+                built = slb.build_outreach_task(slb.ALL_VERTICALS)
+                if built is None:
+                    tg.send("📣 No *Not Contacted* leads in the CRM — nothing to send.")
+                    return
+                title, desc = built
+                t = cloud.tasks.create(CLOUD_WF, title, description=desc,
+                                       agent_id=agents.get("Ahmed"), priority="high",
+                                       metadata={"kind": "outreach_existing",
+                                                 "approval_gate": "hitl_any_channel",
+                                                 "source": "telegram"})
+                tracked[t.id] = {"agent": "Ahmed", "kind": "task", "last": None,
+                                 "lead": None, "born": time.time()}
+                tg.send(f"🚀 Outreach task created (`{str(t.id)[:8]}…`) — Ahmed is on it. "
+                        "The rendered messages will arrive here for your approval.")
             except SystemExit as e:
                 tg.send(f"⚠️ Pipeline: {e}")
             except Exception as e:
                 tg.send(f"⚠️ Pipeline failed: {e}")
         threading.Thread(target=run, daemon=True).start()
-        tg.send("⏳ Preparing (CRM normalize + Snov enrichment)… this can take a few minutes.")
+        tg.send("⏳ Preparing (CRM normalize + template embed)… a moment.")
 
     def waiting_buttons(tid, status):
         # Backend contract (app/tasks/service.py approve_task): /approve REQUIRES a JSON body
@@ -631,7 +622,6 @@ def main() -> None:
                     continue
                 if data == "menu:status": status()
                 elif data == "menu:pipeline": pipeline_menu()
-                elif data == "pipe:batch": fire_pipeline("batch")
                 elif data == "pipe:outreach": fire_pipeline("outreach")
                 elif data == "menu:approvals": pending_approvals()
                 elif data == "menu:tasks":
