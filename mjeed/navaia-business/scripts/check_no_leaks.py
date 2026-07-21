@@ -172,6 +172,52 @@ def real_name_pairs() -> list[tuple[str, str]]:
     return pairs
 
 
+# The scraped lead pool is itself full of real names and phones, so scanning it against itself
+# flags every row. It is tracked on purpose (it is the live pain source — see OPEN_ITEMS), so it
+# cannot go in _FORBIDDEN_PATHS without blocking every push. Skip it as a SOURCE of truth only.
+_LEAD_POOL = "leads_scraped_compact.json"
+
+
+def real_companies() -> set[str]:
+    """Distinctive real company names from the scraped lead pool.
+
+    Added 2026-07-21 after three real leads WITH their mobile numbers were found already public
+    in the SDK fork, inside a hardcoded demo list. Every pre-push scan had passed them, because
+    the checks above only know about PERSON names. A company is a customer too, and its name in
+    a public file is exactly the leak this gate exists to stop.
+
+    Only names of 8+ characters, so a short generic title cannot match ordinary prose.
+    """
+    out: set[str] = set()
+    try:
+        with io.open(os.path.join(ROOT, _LEAD_POOL), encoding="utf-8") as f:
+            for row in json.load(f):
+                name = (row.get("name") or "").strip()
+                if len(name) >= 8 and not _FIXTURE_OK.search(name):
+                    out.add(name.lower())
+    except (FileNotFoundError, json.JSONDecodeError, AttributeError, TypeError):
+        pass
+    return out
+
+
+def real_lead_phones() -> set[str]:
+    """Last 9 digits of every real lead phone — the part that survives any formatting.
+
+    Matching on the suffix means +966 50 123 4567, 0501234567 and 966501234567 all collide,
+    so a number cannot slip through by being written differently.
+    """
+    out: set[str] = set()
+    try:
+        with io.open(os.path.join(ROOT, _LEAD_POOL), encoding="utf-8") as f:
+            for row in json.load(f):
+                digits = re.sub(r"\D", "", row.get("phone") or "")
+                if len(digits) >= 9:
+                    out.add(digits[-9:])
+    except (FileNotFoundError, json.JSONDecodeError, AttributeError, TypeError):
+        pass
+    return out
+
+
 def _git(*args: str) -> str:
     try:
         return subprocess.run(["git", *args], cwd=ROOT, capture_output=True,
@@ -192,8 +238,28 @@ def _added_lines(diff: str) -> str:
                      if l.startswith("+") and not l.startswith("+++"))
 
 
+def _added_lines_excluding(diff: str, exclude: str) -> str:
+    """Added lines, minus those belonging to `exclude`.
+
+    The lead pool is the SOURCE of the company/phone lists and is tracked, so every edit to it
+    adds lines that legitimately contain real names — scanning those against the list built from
+    the same file would flag it against itself on every push that touches it.
+    """
+    out, skipping = [], False
+    for line in diff.splitlines():
+        if line.startswith("+++ "):
+            skipping = os.path.basename(line[4:].strip()) == exclude
+            continue
+        if line.startswith("---") or skipping:
+            continue
+        if line.startswith("+"):
+            out.append(line[1:])
+    return "\n".join(out)
+
+
 def scan_text(label: str, text: str, names: set[str], creds_only: bool = False,
-              pairs: list[tuple[str, str]] | None = None) -> list[str]:
+              pairs: list[tuple[str, str]] | None = None,
+              companies: set[str] | None = None, phones: set[str] | None = None) -> list[str]:
     hits = []
     for what, pattern in _SECRETS:
         for m in pattern.finditer(text):
@@ -214,6 +280,14 @@ def scan_text(label: str, text: str, names: set[str], creds_only: bool = False,
     for given, surname in (pairs or []):
         if given in lowered and surname in lowered:
             hits.append(f"{label}: real prospect name -> {given} {surname}")
+    for company in (companies or []):
+        if company in lowered:
+            hits.append(f"{label}: real company name -> {company[:44]}")
+    if phones:
+        digits = re.sub(r"\D", "", text)
+        for phone in phones:
+            if phone in digits:
+                hits.append(f"{label}: real lead phone -> …{phone[-6:]}")
     return hits
 
 
@@ -231,26 +305,39 @@ def main() -> None:
 
     names = real_names()
     pairs = real_name_pairs()
+    # Personal-data checks only; --credentials-only scans the whole tree every push and must
+    # stay narrow, or the pre-existing cleanup backlog would block unrelated work.
+    companies = set() if args.credentials_only else real_companies()
+    phones = set() if args.credentials_only else real_lead_phones()
     hits: list[str] = []
 
     if args.all_tracked:
         for path in _git("ls-files").splitlines():
             if _FORBIDDEN_PATHS.search(path) and not args.credentials_only:
                 hits.append(f"TRACKED FILE that must never be committed: {path}")
+            # The pool is the SOURCE of the company/phone lists — scanning it against itself
+            # would flag every row it legitimately contains.
+            src = os.path.basename(path) == _LEAD_POOL
             try:
                 with io.open(os.path.join(ROOT, path), encoding="utf-8") as f:
-                    hits += scan_text(path, f.read(), names, args.credentials_only, pairs)
+                    hits += scan_text(path, f.read(), names, args.credentials_only, pairs,
+                                      set() if src else companies, set() if src else phones)
             except (OSError, UnicodeDecodeError):
                 continue
     else:
         diff = _git("diff", "--cached") or _git("diff", "HEAD~1")
         if args.rng:
             diff = _git("diff", args.rng)
-            hits += scan_text("commit message", _git("log", "--format=%B", args.rng), names, pairs=pairs)
+            hits += scan_text("commit message", _git("log", "--format=%B", args.rng), names,
+                              pairs=pairs, companies=companies, phones=phones)
         for path in (_git("diff", "--cached", "--name-only") or "").splitlines():
             if _FORBIDDEN_PATHS.search(path):
                 hits.append(f"STAGED file that must never be committed: {path}")
+        # Credentials, mailboxes and person names are scanned across everything added…
         hits += scan_text("diff", _added_lines(diff), names, pairs=pairs)
+        # …while company/phone matching skips the pool file, which legitimately holds them.
+        hits += scan_text("diff", _added_lines_excluding(diff, _LEAD_POOL), set(),
+                          companies=companies, phones=phones)
 
     if hits:
         print("REFUSING — real data or credentials found:\n")
