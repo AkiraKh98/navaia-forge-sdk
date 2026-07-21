@@ -14,6 +14,10 @@ Decision (per the boss + user rules):
   - whichever scores higher wins; its coupled solution rides along. If the specific pain maps
     to nothing we can solve (novel / noise), the GENERAL pair wins — the safe, whole default.
 
+`{{2}}` is GENERATED per lead when a pain profile exists (see `generate_block`), and falls
+back to this deterministic library otherwise. The library is the FLOOR, not the default: it
+is what guarantees publishable copy when the profile is empty, unusable, or off-topic.
+
 Deterministic by design (OPTIMIZATION.md: scripts, not model calls). An optional LLM step is
 left as a stub for genuinely novel specific pains; off by default to control spend.
 
@@ -282,7 +286,105 @@ def _stems(text: str) -> set[str]:
     return {_stem(w) for w in _norm(text).split() if w}
 
 
+# ── greeting ────────────────────────────────────────────────────────────────
+# Lives here, not in outreach.py, because three callers need it and this module is
+# stdlib-only: outreach (WhatsApp + local render), snov_push (pushes it as a custom field)
+# and snov_preview. Snov templates have no conditionals, so the person-vs-company choice
+# has to be made where the data is — here — and shipped as one finished string.
+
+_FEM_SUFFIX = ("ة", "ى", "ا")
+_FEM_NAMES = {"سارة", "ساره", "مريم", "نور", "هند", "جواهر", "شهد", "رغد", "لمى", "دعاء",
+              "أمل", "امل", "وفاء", "أسماء", "اسماء", "رهف", "غادة", "غاده", "بشرى",
+              "ريم", "دانة", "دانه", "منى", "سلمى", "هيا", "لطيفة", "لطيفه", "نوف"}
+_ARABIC_RE = re.compile(r"[؀-ۿ]")
+
+
+def title_for(full_name: str) -> str:
+    """`الأستاذة` for a woman, `الأستاذ` otherwise.
+
+    Was hardcoded masculine, so every female contact was addressed as a man in real
+    outreach under the operator's name — caught rendering "الأستاذ سارة" on 2026-07-21.
+    Arabic gender cannot be inferred reliably from a name in general, so this is
+    deliberately conservative: الأستاذة only on a clear feminine marker in the FIRST name,
+    otherwise the masculine form rather than a guess. Both errors are rude, which is why a
+    lead with no personal name gets the company greeting instead of a coin flip.
+    """
+    first = (full_name or "").strip().split(" ")[0]
+    if not first:
+        return "الأستاذ"
+    if first in _FEM_NAMES or (len(first) > 2 and first.endswith(_FEM_SUFFIX)):
+        return "الأستاذة"
+    return "الأستاذ"
+
+
+RLM = "‏"    # RIGHT-TO-LEFT MARK — a hint only. NOT enough on its own; see below.
+RLE = "‫"    # RIGHT-TO-LEFT EMBEDDING — opens a right-to-left run
+PDF = "‬"    # POP DIRECTIONAL FORMATTING — closes it
+
+
+def rtl_plain(text: str) -> str:
+    """Force right-to-left rendering of Arabic that will NOT carry HTML.
+
+    Arabic sent as plain text has no direction, so a mail client lays it out left-to-right
+    and every trailing comma and full stop wraps to the WRONG end of the line:
+
+        ،السلام عليكم ورحمة الله وبركاته      <- the comma belongs at the other end
+        .ساعدنا مكاتبَ عقاريةً أخرى
+
+    Delivered to the operator's inbox looking exactly like that on 2026-07-21. To a native
+    reader that is not a subtle flaw; it is the first impression of a cold email.
+
+    **RLM alone does not fix this** — that was the first attempt and it shipped unchanged.
+    A RIGHT-TO-LEFT MARK only resolves the direction of NEUTRAL characters next to it; it
+    does not set the base direction of the line, so the paragraph stays LTR and the trailing
+    punctuation still jumps. Each line has to be wrapped in a directional EMBEDDING —
+    RLE … PDF — which does set base direction.
+
+    Needed because `snov.send` html.escape()s its body, so `<div dir="rtl">` cannot survive
+    on that path. The controls are zero-width, cost two characters per line, and are
+    harmless inside HTML, so this is applied either way rather than guessing which path a
+    body takes.
+    """
+    out = []
+    for line in (text or "").split("\n"):
+        stripped = line.strip()
+        if not stripped or stripped.startswith(RLE):
+            out.append(line)
+            continue
+        out.append(RLE + line.replace(RLM, "").replace(PDF, "") + PDF)
+    return "\n".join(out)
+
+
+def greeting(contact_name: str = "", company: str = "") -> str:
+    """Person when we have a real one, company otherwise. Never empty.
+
+    The name must be ARABIC to be used: transliterating a Latin-script surname into Arabic
+    guesses a spelling, and the wrong spelling of someone's own name is worse than not
+    using it. Never returning empty matters for the Snov path — these campaigns set
+    skip_recipients_without_variables_data=true, so an empty greeting would silently drop
+    the recipient rather than mail them.
+    """
+    name = (contact_name or "").strip()
+    if name and _ARABIC_RE.search(name):
+        return f"{title_for(name)} {name}"
+    company = (company or "").strip()
+    return f"القائمون على {company} الكرام" if company else "أهل الشركة الكرام"
+
+
 CHEAP_MODEL = "qwen/qwen3.6-plus"   # same cheap model the enrichment uses
+
+# The composer WRITES customer-facing Arabic; classify_llm only picks a category id from a
+# fixed list. Those are different jobs and they get different models. A cheap model is fine
+# at choosing between five labels and not fine at Saudi-dialect B2B copy that goes out under
+# the operator's name — and the failure is invisible, because wrong-but-fluent Arabic still
+# passes every automated check we have. Same model review_pains uses, for the same reason:
+# measured across the pool the difference is cents.
+COMPOSE_MODEL_DEFAULT = "qwen/qwen3-235b-a22b"
+
+
+def compose_model() -> str:
+    """Resolved lazily: `_env` is defined further down this module."""
+    return _env("COMPOSE_MODEL") or COMPOSE_MODEL_DEFAULT
 
 
 def classify_llm(vertical: str, pain_line: str, key: str) -> str | None:
@@ -387,15 +489,403 @@ def select(vertical: str, pain_line: str, *, use_llm: bool = False, key: str | N
     return _general("specific present but no keyword/stem match -> general (enable --llm for semantic pass)")
 
 
+# ── generated {{2}} ─────────────────────────────────────────────────────────
+#
+# The library is retrieval: 4-6 blocks per vertical, so a company with several distinct
+# problems still receives one pre-written sentence. That ceiling is why every lead sent on
+# 2026-07-20 rendered the general block. The generated path writes the pain clause for THIS
+# company from the full pain profile `review_pains.pain_profile()` produced.
+#
+# What keeps it safe is what is NOT in the prompt. The model receives only English pain
+# DESCRIPTORS and counts — never a review, never a quote, never a rating. So the copy cannot
+# cite a customer's feedback back to them even if the model tried to; the rule is enforced
+# by the data flow, not by an instruction the model might ignore.
+#
+# Relevance is decided HERE, because this is the only layer that knows what we sell: the
+# prompt carries the vertical's real solution catalogue and is told to drop any pain we do
+# not address. A company whose only problem is pricing gets the vertical's general block,
+# not a response-time pitch aimed at a pain it does not have.
+
+# Output that must never ship, checked in code after generation. Each is a real defect that
+# has reached or nearly reached a customer.
+_BANNED_SUBSTRINGS = (
+    "نُؤتمت", "نؤتمت",          # the coined verb the operator rejected
+    "—", "–",                    # em/en dash: an AI tell, doctrine forbids it
+    "·", "•",
+)
+# Anything that reveals we read their reviews. The pain may be that specific; saying why
+# it is known never ships.
+_REVIEW_TELLS = ("تقييم", "التقييمات", "مراجعات", "المراجعات", "تعليقات", "التعليقات",
+                 "review", "rating", "لاحظنا أن", "قرأنا", "اطلعنا على")
+_MAX_BLOCK_CHARS = 340
+
+# Taa marbuta written as haa. Normal in chat, wrong in formal B2B copy, and invisible to
+# every other check here — the model produced the subject "متابعه ضائعه؟" on 2026-07-21.
+# A general rule is not possible (many words legitimately end in ه), so this is a list of
+# the words this pipeline actually uses, and it is cheap to extend.
+_ORTHOGRAPHY = {
+    "متابعه": "متابعة", "مكالمه": "مكالمة", "مراجعه": "مراجعة", "استجابه": "استجابة",
+    "سرعه": "سرعة", "خدمه": "خدمة", "شركه": "شركة", "مؤسسه": "مؤسسة", "عياده": "عيادة",
+    "صيانه": "صيانة", "منافسه": "منافسة", "فرصه": "فرصة", "ضائعه": "ضائعة",
+    "متاخره": "متأخرة", "بطيئه": "بطيئة", "مهمله": "مهملة", "منتظمه": "منتظمة",
+    # Misplaced hamza — the model wrote "ردود بطيءة؟" on a live run. The hamza sits on the
+    # yaa (بطيئة), not standalone before the taa.
+    "بطيءة": "بطيئة", "بطيءه": "بطيئة", "ضاءعة": "ضائعة", "فاءتة": "فائتة",
+    "متاخرة": "متأخرة", "تاخر": "تأخّر", "مؤجله": "مؤجلة",
+}
+
+
+def _orthography_problems(text: str) -> list[str]:
+    """Words spelled with ه where formal Arabic needs ة.
+
+    Strips the definite article and common proclitics before looking a word up: the first
+    version missed `المتابعه` because it only matched the bare `متابعه`, and Arabic copy
+    carries the article far more often than not.
+    """
+    # LETTERS only. `[؀-ۿ]` also matches Arabic punctuation — ؟ (U+061F) and ، (U+060C) —
+    # so "ضائعه؟" came through as a single token and never matched the dictionary. Every
+    # slip at the end of a sentence, which is where they mostly are, was being missed.
+    out = []
+    for w in set(re.findall(r"[ء-يـً-ْ]+", text or "")):
+        bare = re.sub(r"^(وال|فال|بال|كال|لل|ال|و|ف|ب|ك|ل)", "", w)
+        for form in (w, bare):
+            if form in _ORTHOGRAPHY:
+                out.append(f"{w} should be {_ORTHOGRAPHY[form]}")
+                break
+    return sorted(out)
+
+
+def _catalogue(lib: dict) -> str:
+    """The vertical's solvable pains and their exact solutions, as the model's menu."""
+    rows = [f'  - {c["pain"]}  ->  {c["solution"]}' for c in lib["categories"].values()]
+    rows.append(f'  - (general) {lib["general"]["pain"]}  ->  {lib["general"]["solution"]}')
+    return "\n".join(rows)
+
+
+def validate_block(block: str) -> list[str]:
+    """Why this generated block must not ship. Empty list = acceptable."""
+    problems = []
+    text = (block or "").strip()
+    if not text:
+        return ["empty"]
+    if len(text) > _MAX_BLOCK_CHARS:
+        problems.append(f"too long ({len(text)} > {_MAX_BLOCK_CHARS})")
+    for bad in _BANNED_SUBSTRINGS:
+        if bad in text:
+            problems.append(f"contains banned {bad!r}")
+    low = text.lower()
+    for tell in _REVIEW_TELLS:
+        if tell.lower() in low:
+            problems.append(f"reveals review knowledge ({tell!r})")
+    if "," in text:
+        problems.append("Latin comma — Arabic copy uses ،")
+    # Scaffolding that survived a tolerant parse. Reachable when the model emits Arabic
+    # containing unescaped quotes: json.loads fails, the bare-text path returns the whole
+    # `{"block":"..."}` wrapper, and every other check here passes because the payload IS
+    # Arabic. Without this the wrapper would ship as the message.
+    if any(t in text for t in ("{", "}", "<block>", "</block>", '"block"')):
+        problems.append("contains raw scaffolding, not clean copy")
+    # No Latin words, full stop. Verified against all 29 library blocks: not one contains a
+    # run of Latin letters, so this cannot reject good copy — and it catches every shape of
+    # leaked scaffolding at once. A model emitted the malformed `[block>` on 2026-07-21,
+    # which slipped past a tag-specific check and would have shipped with the copy, along
+    # with the trailing solution id. It also catches "review"/"rating" tells for free.
+    if (latin := re.search(r"[A-Za-z]{3,}", text)):
+        problems.append(f"contains Latin text {latin.group(0)!r} — leaked scaffolding?")
+    if not re.search(r"[؀-ۿ]", text):
+        problems.append("not Arabic")
+    problems += _orthography_problems(text)
+    return problems
+
+
+def _extract(txt: str) -> tuple[str, list[str]]:
+    """Pull the block and the claimed solution ids out of whatever shape the reply took.
+
+    Three tolerances, in order, because a usable Arabic sentence must not be thrown away
+    over packaging. Tags first (asked for, and unbreakable by quotation marks in the copy),
+    then JSON (models default to it regardless of instructions), then the bare reply.
+    Both stricter forms failed on real replies on 2026-07-21 and discarded good copy.
+    """
+    import json
+
+    used: list[str] = []
+    if (mu := re.search(r"<used>(.*?)</used>", txt, re.S)):
+        used = [u.strip() for u in mu.group(1).split(",") if u.strip()]
+
+    if (mb := re.search(r"<block>(.*?)</block>", txt, re.S)):
+        return mb.group(1).strip(), used
+
+    if (mj := re.search(r"\{.*\}", txt, re.S)):
+        try:
+            obj = json.loads(mj.group(0))
+            if isinstance(obj, dict) and obj.get("block"):
+                raw_used = obj.get("used") or []
+                if isinstance(raw_used, str):
+                    raw_used = [u.strip() for u in raw_used.split(",") if u.strip()]
+                return str(obj["block"]).strip(), used or list(raw_used)
+        except json.JSONDecodeError:
+            pass    # unescaped quotes in Arabic copy — fall through to the bare text
+
+    # A JSON object whose Arabic contains an unescaped quote: json.loads already failed
+    # above, and the bare path would otherwise return the whole `{"block":"…"}` wrapper as
+    # copy. Pull the value out positionally instead — first quote after the key, last quote
+    # before the closing brace. Seen repeatedly on live replies; without this the run falls
+    # back to the library and the lead silently loses its personalised block.
+    if (mk := re.search(r'"block"\s*:\s*"', txt, re.I)):
+        rest = txt[mk.end():]
+        # The value ends at the quote that closes it — the one followed by the NEXT key or
+        # by the closing brace. Not the last quote in the string: a trailing `"used":"…"`
+        # would otherwise be swallowed into the copy, which is exactly what happened first
+        # time. Prefer the next-key boundary, fall back to the final brace.
+        nxt = re.search(r'"\s*,\s*"[A-Za-z_]+"\s*:', rest)
+        end = nxt.start() if nxt else rest.rfind('"')
+        if end > 0:
+            return rest[:end].strip(), used
+
+    # Bare reply: strip any stray tag/label scaffolding and take what is left.
+    bare = re.sub(r"```[a-zA-Z]*", " ", txt)                    # markdown fences
+    bare = re.sub(r"</?(block|used)>", " ", bare)
+    bare = re.sub(r"^\s*(block|copy|sentence)\s*[:：]\s*", "", bare.strip(), flags=re.I)
+    bare = bare.strip().strip('"').strip()
+
+    # Last resort: keep the longest ARABIC run and discard everything else. The copy is
+    # Arabic and the scaffolding never is, so this survives every wrapper shape the model
+    # has produced — unescaped-quote JSON, half-closed tags, a stray "Block:" label — where
+    # the specific parsers above kept missing one variant and falling back to the library on
+    # a third of runs. Only used when the text still carries Latin scaffolding, so a clean
+    # bare reply is returned untouched.
+    if re.search(r"[A-Za-z]{3,}|[{}]", bare):
+        runs = re.findall(r"[؀-ۿ][؀-ۿ\s،؛.؟!%0-9ً-ْ]*", bare)
+        if runs:
+            longest = max(runs, key=len).strip()
+            if len(longest) > 40:          # a real sentence, not a stray word
+                return longest, used
+    return bare, used
+
+
+def generate_block(vertical: str, pain_summary: str, pains: list[dict] | None,
+                   key: str, company: str = "") -> tuple[str | None, dict]:
+    """Write `{{2}}` for THIS company: their real pains, matched only to what we solve."""
+    import json                    # local, matching classify_llm — this module is
+    import urllib.request          # stdlib-only and imports must stay cheap
+    vk = (vertical or "").strip().lower()
+    lib = LIBRARY.get(vk)
+    if not lib:
+        raise ValueError(f"unknown vertical {vertical!r}; known: {list(LIBRARY)}")
+
+    listed = "\n".join(f"  - {p['pain'].replace('_', ' ')} "
+                       f"(reported by {p['count']} of {p['reviewed']})"
+                       for p in (pains or []))
+    prompt = (
+        f"You write Arabic B2B outreach for NAVAIA, which builds automation for Saudi "
+        f"companies. Write the ONE sentence that names a prospect's operational problem and "
+        f"the automation we run for it.\n\n"
+        f"Prospect sector: {lib['desc']}\n"
+        + (f"Their operational situation: {pain_summary}\n" if pain_summary else "")
+        + (f"Problems identified, most common first:\n{listed}\n" if listed else "")
+        + f"\nNAVAIA only solves these, with these exact solutions:\n{_catalogue(lib)}\n\n"
+        f"Rules:\n"
+        f"1. Use ONLY problems from the prospect's situation that CLEARLY match our "
+        f"solvable list. IGNORE any problem we do not solve (pricing, fees, rent increases, "
+        f"refunds, deposits, legal disputes, staff behaviour, quality of the work, "
+        f"maintenance faults). Never promise anything outside the list, and never stretch "
+        f"one of their problems to fit a solution — a fee complaint is NOT a collection "
+        f"problem, and a maintenance fault is NOT a response-time problem. When in doubt, "
+        f"treat it as not solvable and follow rule 3.\n"
+        f"2. If two or three of their problems are solvable, cover them together in one "
+        f"flowing sentence. Do not list more than three.\n"
+        f"3. If NONE of their problems are solvable by us, or you were given nothing "
+        f"useful, write the sector's general pain and its solution instead. Never invent a "
+        f"problem and never leave it vague.\n"
+        f"4. State the problem as a known, fixable situation in their line of work. NEVER "
+        f"say or imply that anyone told us, that we read anything about them, or that "
+        f"customers complained. Do not mention reviews, ratings or feedback.\n"
+        f"5. Modern Standard Arabic. Arabic commas (،) only, never Latin commas. No "
+        f"em-dashes, no bullets, no marketing slogans, no exclamation marks.\n"
+        f"6. Never use the invented verb 'نُؤتمت'. Use 'تتولّى' or 'تُشغّل'.\n"
+        f"7. Address them as 'كم' (plural, respectful). Do not name the company.\n"
+        f"8. Numerals 11-99 take a singular noun.\n"
+        f"9. Shape: the problem، then our automation for it. One sentence, max 45 words.\n\n"
+        # NOT JSON. Arabic copy legitimately contains quotation marks and the model emitted
+        # an unescaped one on 2026-07-21, so json.loads failed and a perfectly good sentence
+        # was thrown away. Tags cannot be broken by the content they wrap.
+        f"Reply with the sentence between <block></block> tags, then the ids of the "
+        f"solvable pains you used between <used></used> tags, comma separated.\n"
+        f"Use ONLY these ids: {', '.join(lib['categories'])}, general\n"
+        f"Example: <block>...</block><used>slow_reply,general</used>"
+    )
+
+    body = json.dumps({"model": compose_model(), "temperature": 0.3,
+                       "messages": [{"role": "user", "content": prompt}]}).encode()
+    req = urllib.request.Request(
+        "https://openrouter.ai/api/v1/chat/completions", data=body,
+        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=90) as r:
+            txt = json.load(r)["choices"][0]["message"]["content"]
+    except Exception as e:  # noqa: BLE001
+        # A failure must never silently become "no pain" — the caller falls back to the
+        # library and SAYS it did, so a dead key cannot quietly flatten every lead.
+        return None, {"generated": False, "reason": f"generation FAILED: {e}"}
+
+    block, used = _extract(txt)
+
+    # Structural check that the model stayed inside the catalogue. It cannot prove the
+    # MAPPING is sound — a fee complaint bent into "rent collection" would still pass — but
+    # it does prove no solution was invented, and it surfaces the mapping in the trace so a
+    # human sees which promise is being made before the gate.
+    known = set(lib["categories"]) | {"general"}
+    invented = [u for u in used if u and u not in known]
+    if invented:
+        return None, {"generated": False,
+                      "reason": f"rejected: promised solutions we do not have: {invented}",
+                      "rejected_text": block}
+
+    problems = validate_block(block)
+    if problems:
+        return None, {"generated": False, "reason": f"rejected: {'; '.join(problems)}",
+                      "rejected_text": block}
+    return block, {"generated": True, "reason": "generated from the lead's own pain profile",
+                   "pains_seen": [p["pain"] for p in (pains or [])],
+                   "solutions_used": used}
+
+
+# The vertical's approved subject, used as the FLOOR when generation is off, fails, or is
+# rejected. Verbatim from workforce/04_outreach_templates.md.
+SUBJECT_FALLBACK = {
+    "realestate": "مهتمّ يبرد؟",
+    "contracting": "عقود تفوتكم؟",
+    "training": "موسمٌ يُغرقكم؟",
+    "clinics": "مواعيد فائتة؟",
+    "finance": "تحصيلٌ أعلى؟",
+}
+_MAX_SUBJECT_CHARS = 60
+
+
+def validate_subject(subject: str) -> list[str]:
+    """Why this generated subject must not ship. Empty list = acceptable.
+
+    Stricter than the body on length and shape: a subject is the one line that decides
+    whether the mail is opened, and a long or odd one reads as spam before it is read at all.
+    """
+    problems = []
+    text = (subject or "").strip()
+    if not text:
+        return ["empty"]
+    if len(text) > _MAX_SUBJECT_CHARS:
+        problems.append(f"too long ({len(text)} > {_MAX_SUBJECT_CHARS})")
+    if "\n" in text:
+        problems.append("multi-line")
+    for bad in _BANNED_SUBSTRINGS:
+        if bad in text:
+            problems.append(f"contains banned {bad!r}")
+    low = text.lower()
+    for tell in _REVIEW_TELLS:
+        if tell.lower() in low:
+            problems.append(f"reveals review knowledge ({tell!r})")
+    if re.search(r"[A-Za-z]{3,}", text):
+        problems.append("contains Latin text — leaked scaffolding?")
+    if not re.search(r"[؀-ۿ]", text):
+        problems.append("not Arabic")
+    # A cold subject that shouts is a spam signal before anyone reads a word of it.
+    if "!" in text or "؟؟" in text or text.isupper():
+        problems.append("shouty punctuation")
+    # ONE question, not a stack of them. The model produced "ردود متأخّرة؟ متابعات ضائعة؟"
+    # on 2026-07-21 — two questions in six words reads as clickbait, and stacking hooks is a
+    # spam-filter pattern. A subject asks one thing.
+    if text.count("؟") + text.count("?") > 1:
+        problems.append("more than one question — subject asks ONE thing")
+    problems += _orthography_problems(text)
+    return problems
+
+
+def generate_subject(vertical: str, pains: list[dict] | None, key: str,
+                     pain_summary: str = "") -> tuple[str, dict]:
+    """A short Arabic subject for THIS lead, or the vertical's approved one as the floor.
+
+    Same containment as the body: the model sees English pain DESCRIPTORS and counts, never
+    a review, quote or rating, so the subject cannot cite a customer's feedback back to them.
+    Falls back rather than shipping anything that fails validation — the fallback is approved
+    copy, so falling back costs nothing.
+    """
+    import json
+    import urllib.request
+
+    vk = (vertical or "").strip().lower()
+    floor = SUBJECT_FALLBACK.get(vk, "")
+    lib = LIBRARY.get(vk)
+    if not lib or not key or not (pains or pain_summary):
+        return floor, {"generated": False, "reason": "no profile or no key — approved floor"}
+
+    listed = ", ".join(p["pain"].replace("_", " ") for p in (pains or [])[:4])
+    prompt = (
+        f"Write ONE Arabic email subject line for a cold B2B email to a Saudi company.\n\n"
+        f"Sector: {lib['desc']}\n"
+        + (f"Their operational problems: {listed}\n" if listed else "")
+        + (f"Context: {pain_summary}\n" if pain_summary else "")
+        + f"\nRules:\n"
+        f"1. MAXIMUM 6 words. Short is the whole point.\n"
+        f"2. Name the problem from their side, as a question or a short statement. "
+        f'Examples of the right register: "مهتمّ يبرد؟", "عقود تفوتكم؟".\n'
+        f"3. Use ONLY a problem we solve (slow replies, lost follow-up, missed enquiries, "
+        f"unanswered calls). If none of theirs qualify, describe the sector's usual one.\n"
+        f"4. NEVER mention reviews, ratings, feedback, or that anyone told us anything.\n"
+        f"5. No company name, no exclamation marks, no emoji, no Latin letters, no "
+        f"em-dashes. Arabic commas only.\n"
+        f"6. Do not sell, do not greet, do not use our company name.\n\n"
+        f"Reply with the subject between <s></s> tags. Example: <s>مهتمّ يبرد؟</s>"
+    )
+    body = json.dumps({"model": compose_model(), "temperature": 0.4,
+                       "messages": [{"role": "user", "content": prompt}]}).encode()
+    req = urllib.request.Request(
+        "https://openrouter.ai/api/v1/chat/completions", data=body,
+        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            txt = json.load(r)["choices"][0]["message"]["content"]
+    except Exception as e:  # noqa: BLE001
+        return floor, {"generated": False, "reason": f"subject generation FAILED: {e}"}
+
+    m = re.search(r"<s>(.*?)</s>", txt, re.S)
+    subject = (m.group(1) if m else txt).strip().strip('"').strip()
+    problems = validate_subject(subject)
+    if problems:
+        return floor, {"generated": False,
+                       "reason": f"subject rejected: {'; '.join(problems)}",
+                       "rejected_text": subject}
+    return subject, {"generated": True, "reason": "generated from the lead's pain profile"}
+
+
 def compose_block(vertical: str, pain_line: str, *, use_llm: bool = False,
-                  key: str | None = None) -> tuple[str, dict]:
-    """Return the `{{2}}` block (coupled pain->solution) + the decision trace."""
+                  key: str | None = None, pain_summary: str = "",
+                  pains: list[dict] | None = None) -> tuple[str, dict]:
+    """Return the `{{2}}` block (coupled pain->solution) + the decision trace.
+
+    Generates when a pain profile and a key are available; otherwise falls back to the
+    library. The fallback is not a failure mode — it is the floor, and it is why an empty
+    or unusable pain profile still yields publishable copy.
+    """
+    if key and (pain_summary or pains):
+        block, meta = generate_block(vertical, pain_summary, pains, key,
+                                     company="")
+        if block:
+            block = block.replace(" — ", "، ").replace("—", "،").rstrip()
+            # The library blocks end in a full stop; a generated one often did not, so it ran
+            # into the following paragraph. Cosmetic in isolation, visible in a real email.
+            if block and block[-1] not in ".!؟":
+                block += "."
+            meta.update({"choice": "generated", "category": None,
+                         "score_specific": 0.0, "score_general": GENERAL_RELEVANCE})
+            return block, meta
+        print(f"    compose: {meta.get('reason')} -> falling back to the library")
+
     d = select(vertical, pain_line, use_llm=use_llm, key=key)
     pain = d["pain"].rstrip("،.").strip()
     solution = d["solution"].strip()
     block = f"{pain}، {solution}."
     # Doctrine: no AI tells — an em-dash must never ship, wherever it snuck in.
     block = block.replace(" — ", "، ").replace("— ", "").replace(" —", "").replace("—", "،")
+    d["generated"] = False
     return block, d
 
 
@@ -444,7 +934,11 @@ def main() -> None:
     ap.add_argument("--llm", action="store_true", help="enable the cheap-LLM semantic fallback")
     args = ap.parse_args()
 
-    key = (_env("MY_OPENROUTER_KEY") or _env("OPENROUTER_API_KEY")) if args.llm else None
+    # One key name only. This used to read MY_OPENROUTER_KEY first, which went dead on
+    # 2026-07-21 — so --llm silently produced library copy instead of generated copy.
+    # nav_env.openrouter_key() is the canonical accessor; this module keeps its own _env to
+    # stay import-light, so the name is repeated here rather than the fallback logic.
+    key = _env("OPENROUTER_API_KEY") if args.llm else None
 
     if args.self_test or not args.inp:
         _self_test(use_llm=args.llm, key=key)

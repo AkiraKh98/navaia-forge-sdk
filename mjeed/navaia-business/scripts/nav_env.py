@@ -37,6 +37,21 @@ def env(key: str, default: str | None = None) -> str | None:
     return m.group(1).strip() if m else default
 
 
+def openrouter_key() -> str | None:
+    """THE OpenRouter key. One accessor, so callers cannot disagree about the order.
+
+    `MY_OPENROUTER_KEY` was a second, personal key that went dead on 2026-07-21 (401 on
+    every request). Six scripts resolved `MY_OPENROUTER_KEY or OPENROUTER_API_KEY`, so the
+    DEAD key won wherever both were set, and every LLM step failed on a credential rather
+    than on its own logic. The visible symptom was not an error: the composer fell back to
+    library copy and the run looked like it had merely chosen the fallback path.
+
+    The operator commented it out of `.env` on 2026-07-22 and this now reads one name only.
+    Resolving a second key here is what created the bug; do not reintroduce a fallback.
+    """
+    return env("OPENROUTER_API_KEY")
+
+
 def base_url() -> str:
     """The NavaiaForge backend all acting scripts target (cloud by default)."""
     return env("NAVAIA_BASE_URL", CLOUD_BASE_URL)

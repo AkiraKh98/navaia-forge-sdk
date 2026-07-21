@@ -269,6 +269,8 @@ HELP = (
     "• /tasks — browse running/completed tasks and read their output\n"
     "• /approvals — every task waiting on you, with Approve/Reject buttons\n"
     "• /report — daily ops summary (Rashid)\n"
+    "• /scrape <n> — run discovery for n leads: Maps → qualify → review pains → CRM "
+    "(costs credit per lead, so the number must be typed)\n"
     "• /send — approve outreach WhatsApp sends\n"
     "• /leads — CRM pipeline health: lead counts by status and vertical\n"
     "• /lead <name|phone> — find a specific lead in the CRM\n"
@@ -865,6 +867,33 @@ def main() -> None:
             if low.startswith("/approvals"): pending_approvals(); continue
             if low.startswith("/report"):
                 start_task(agents.get("Rashid"), "Rashid", "Generate today's 5-line NAVAIA operations summary.", kind="report"); continue
+            if low.startswith("/scrape"):
+                # The batch size must be TYPED. There is no bare /scrape default on
+                # purpose: this spends OpenRouter credit per lead (qualification + pain
+                # extraction) and writes to the shared production CRM, so the number is the
+                # operator's explicit instruction rather than something the bot assumes.
+                arg = text[7:].strip()
+                if not arg.isdigit() or not 1 <= int(arg) <= 50:
+                    tg.send("🔎 *Scrape* — usage: `/scrape <n>` (1–50)\n\n"
+                            "Runs discovery: Google Maps → qualify the vertical → read the "
+                            "reviews for pains → enrich the site → write to the CRM.\n\n"
+                            "Costs a little OpenRouter credit per lead and writes to the "
+                            "shared CRM, so the batch size is not assumed — type it.\n"
+                            "Example: `/scrape 10`")
+                    continue
+                n = int(arg)
+                start_task(
+                    agents.get("Rashid"), "Rashid",
+                    f"Run discovery for {n} leads.\n\n"
+                    f"Preflight scripts/discover.py first. If it is missing, STOP and "
+                    f"report [WAITING:BLOCKED] — do not substitute another method and do "
+                    f"not produce any leads.\n\n"
+                    f"Then run:\n"
+                    f"    python scripts/discover.py --source gmaps --limit {n}\n\n"
+                    f"Report the counts the script actually printed (written / skipped / "
+                    f"failed, pages fetched) and quote any WARN lines verbatim.",
+                    kind="task")
+                continue
             if low.startswith("/send"): present_sends(); continue
             if low.startswith("/leads"): crm_leads(); continue
             if low.startswith("/lead"):

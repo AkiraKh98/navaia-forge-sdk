@@ -65,7 +65,7 @@
 | User's name | **Resolved** — عبدالمجيد الوردي / Abdulmajeed Alwardi |
 | User's company | **Resolved** — نڤايا / NAVAIA |
 | User's cal.com | **Resolved** — https://cal.com/abdulmajeed-alwardi |
-| User's phone | **Resolved** — {{CONTACT_PHONE}} |
+| User's phone | **Resolved** — `NAVAIA_CONTACT_PHONE` (see .env) |
 | Tone | **Resolved** — formal فصحى, direct/brief |
 | Cadence | **Resolved** — day 0 / +3 / +7 |
 | Channel | **Resolved** — email first, WhatsApp later |

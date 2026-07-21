@@ -68,6 +68,41 @@ VKEY = {
     "Training Institutes": "training",
 }
 
+# Per-vertical EMAIL ATTACHMENT — the executive summary for that vertical's agent team.
+#
+# READ THIS BEFORE WIRING IT INTO A SEND. Snov cannot attach a file from here: the workforce's
+# Snov integration exposes enrich/verify ONLY (no campaign or send functions), and Snov itself
+# has no ad-hoc send endpoint — /v1/send-email and /v1/campaigns/send both 404, probed live
+# (workforce/INTEGRATION_CAPABILITIES_AND_GAPS.md). Snov sends only through drip campaigns
+# configured in its DASHBOARD, and that is also the only place a file can be attached (6 MB
+# total per campaign; each file below is well under). So this mapping is the single source of
+# truth for WHICH pdf belongs to WHICH vertical — the upload itself is a manual dashboard step,
+# one campaign per vertical. Do not add an --attach flag that silently does nothing.
+#
+# Paths resolve under NAVAIA_ATTACHMENTS_DIR (default: assets/attachments next to the repo), so
+# nothing here hardcodes a laptop path and the same config works in a container.
+ATTACHMENT = {
+    "Real Estate": "نڤايا — ملخّص تنفيذي · فريق المبيعات العقاري الذكي.pdf",
+    "Contracting & Facilities": "نڤايا — ملخّص تنفيذي · فريق المناقصات والمبيعات الذكي.pdf",
+    "Training Institutes": "نڤايا — ملخّص تنفيذي · فريق المناقصات ونجاح العملاء.pdf",
+}
+
+
+def attachment_path(vertical: str) -> str:
+    """Absolute path to a vertical's PDF, or '' if it is not configured or not on disk.
+
+    Fails closed and SILENT-FREE: callers must treat '' as "no attachment available" and say so
+    rather than sending a mail that promises an attachment it does not carry.
+    """
+    name = ATTACHMENT.get(vertical)
+    if not name:
+        return ""
+    default = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets", "attachments")
+    root = nav_env.env("NAVAIA_ATTACHMENTS_DIR", default) or default
+    path = os.path.abspath(os.path.join(root, name))
+    return path if os.path.isfile(path) else ""
+
+
 # Per-vertical trigger sentence for the email {trigger_line} token — the approved,
 # unattributed general-pain line (doctrine: never cite reviews; Arabic commas; no em-dash).
 TRIGGER = {
@@ -97,6 +132,9 @@ _TAIL = re.compile(
 
 
 _ARABIC = re.compile(r"[؀-ۿ]")
+
+# The greeting (person vs company, and the gendered honorific) lives in lina_compose so the
+# WhatsApp path, the Snov push and the preview all render the identical string.
 
 
 def short_name(company: str) -> str:
@@ -199,10 +237,18 @@ def render_lead(lead: dict, use_llm: bool, or_key: str | None) -> dict:
     # being generic.
     contact = (lead.get("contact_name") or "").strip()
     use_name = bool(contact) and bool(_ARABIC.search(contact))
-    honorific = (f"الأستاذ {contact}" if use_name
-                 else f"القائمون على {short_name(company)} الكرام")
+    # One source of truth for the greeting, shared with the Snov path — see
+    # lina_compose.greeting. Person when we have an Arabic name, company otherwise.
+    honorific = lina_compose.greeting(contact if use_name else "", short_name(company))
     pain_line = lead.get("pain_line") or lead.get("pain_hints") or ""
-    block, meta = lina_compose.compose_block(vkey, pain_line, use_llm=use_llm, key=or_key)
+    # `{{2}}` is GENERATED from the lead's full pain profile when discovery produced one,
+    # and falls back to the library block when it did not. The generated path receives only
+    # English pain descriptors and counts - never a review, quote or rating - so the copy
+    # cannot cite a customer's feedback back to them. Both paths are still rendered locally
+    # and still stop at the approval gate; nothing here sends.
+    block, meta = lina_compose.compose_block(
+        vkey, pain_line, use_llm=use_llm, key=or_key,
+        pain_summary=lead.get("pain_summary") or "", pains=lead.get("pains") or None)
 
     wa = prep.wa_templates()[vertical]
     # {{3}} is the business name in the body — it must be the CLEAN name too, not the raw
@@ -213,7 +259,23 @@ def render_lead(lead: dict, use_llm: bool, or_key: str | None) -> dict:
         preview = preview.replace("{{%d}}" % i, v)
 
     email_subject = email_body = None
-    if lead.get("email"):
+    # Fail closed on a recipient that is not the lead's own mailbox. On 2026-07-21 a lead
+    # whose "website" was an aqar.fm profile page had the PORTAL's info@ enriched onto its
+    # CRM record, and this function happily rendered a letter addressed to the lead and
+    # handed it to the portal. The address is shown in the approval table, and a human
+    # read it and approved anyway — recipient correctness is not something a human
+    # eyeballing 20 rows of Arabic will catch, so it has to be checked here.
+    email_block = (lead.get("email") or "").strip()
+    if email_block and not prep.email_belongs_to(email_block, lead.get("website") or ""):
+        print(f"  DROPPED email for {company[:40]}: {email_block} is a third party's "
+              f"mailbox (website {lead.get('website') or '-'}) — WhatsApp unaffected")
+        email_block = ""
+    elif email_block and prep.email_domain_mismatch(email_block, lead.get("website") or ""):
+        # Not suppressed: a second private domain is normal. Printed so the operator can
+        # spot the case where it is not.
+        print(f"  note: {company[:40]} mails from {email_block.rsplit('@', 1)[-1]} but "
+              f"its site is {lead.get('website')} — plausible, worth a glance")
+    if email_block:
         email_subject, body = _email_subject_and_body(vertical)
         # noun-phrase pain: the matched category's pain fits "تعاني من …"; generals don't.
         # Same defect as the render label: meta has no 'source' key, so the old
@@ -236,8 +298,13 @@ def render_lead(lead: dict, use_llm: bool, or_key: str | None) -> dict:
         }
         for k, v in fills.items():
             body = body.replace(k, v)
-        # Format the body text to HTML with proper RTL directionality and styling
-        formatted_body = body.strip().replace("\n", "<br>")
+        # Belt and braces on direction. The div below is correct when the HTML survives,
+        # but `snov.send` html.escape()s its body — on that path the tags become visible
+        # text and the dir attribute does nothing, which is how Arabic reached the
+        # operator's inbox laid out left-to-right on 2026-07-21. The RLM is invisible,
+        # survives escaping, and fixes the direction on its own.
+        body = lina_compose.rtl_plain(body.strip())
+        formatted_body = body.replace("\n", "<br>")
         email_body = (
             f'<div dir="rtl" style="text-align: right; direction: rtl; font-family: Arial, sans-serif; font-size: 11pt; line-height: 1.6;">'
             f'{formatted_body}'
@@ -251,6 +318,16 @@ def render_lead(lead: dict, use_llm: bool, or_key: str | None) -> dict:
         phone = "966" + phone
 
     return {**lead, "wa_template": wa["name"], "wa_vars": wa_vars, "wa_preview": preview,
+            # Carried for the Snov campaign path (`--email-via snov`), which pushes these as
+            # prospect custom fields the campaign template renders. Without them
+            # snov_push.add_prospect REFUSES every lead ("no pain_block") — it will not mail
+            # a message with a hole in it — so the whole email channel silently enrols
+            # nobody. `block` is the same string {{2}} uses, so WhatsApp and email cannot
+            # disagree about this lead's pain.
+            "pain_block": block,
+            # Overrides lead["email"] from the spread above: a dropped address must not
+            # survive into the approval table or the dispatch payload.
+            "email": email_block,
             "email_subject": email_subject, "email_body": email_body,
             # meta has 'choice'/'category' — there is no 'source' key, so the old
             # meta.get("source", "general") printed "general" for EVERY lead regardless of
@@ -326,9 +403,20 @@ def build_send_task(vertical: str, leads: list[dict]) -> str:
             "person_id": r["person_id"], "company": r["company"], "to": r["phone_intl"],
             "wa_template": r["wa_template"], "wa_variables": r["wa_vars"],
         }
-        if r["email_body"]:
-            item["email"] = {"to": r["email"], "subject": r["email_subject"],
-                             "body": r["email_body"]}
+        # The email handoff carries VARIABLES, not a rendered body. The body, the operator's
+        # signature and the per-vertical PDF all live on the Snov campaign — they cannot be
+        # sent from here (Snov has no upload endpoint), so shipping a rendered body would
+        # hand over a message that can never be the one actually delivered. What Snov needs
+        # is the three custom fields its template renders, and they must match the names
+        # snov_push pushes or the recipient is skipped silently.
+        if r.get("email"):
+            item["email"] = {
+                "to": r["email"],
+                "subject_line": r.get("subject_line", ""),
+                "greeting": lina_compose.greeting(r.get("contact_name") or "",
+                                                  short_name(r.get("company") or "")),
+                "pain_block": r.get("pain_block", ""),
+            }
         lead_blocks.append(item)
     payload = json.dumps(lead_blocks, ensure_ascii=False, indent=1)
     return f"""## EXECUTE SENDS — {vertical} (operator ALREADY approved locally; no gate, no questions)
@@ -350,8 +438,11 @@ https://graph.facebook.com/v24.0/{{PHONE_NUMBER_ID}}/messages with EXACTLY:
 (substitute the five wa_variables strings verbatim, in order).
 
 ### 2. Email — ONLY for leads whose JSON block has an "email" object
-Send via the Snov.io tool through the connected Zoho mailbox (ops@navaia.sa), subject and
-body EXACTLY as given. The body carries no signature (Snov auto-appends it). Max 20/day.
+Enrol the prospect on the vertical's Snov list with its "to" address and these three custom
+fields, VERBATIM and under exactly these names: subject_line, greeting, pain_block. Then
+start/resume that vertical's campaign. Snov supplies the body, the signature and the PDF —
+they live on the campaign, so never compose a body here. Never send with any of the three
+fields empty: the campaign skips such a recipient silently. Max 20/day.
 
 ### 3. DO NOT touch the CRM. Status updates are handled outside this task.
 
@@ -486,26 +577,25 @@ def _fake_leads() -> list[dict]:
 def resolve_openrouter_key() -> str | None:
     """Pick a WORKING OpenRouter key, and say out loud which one and why.
 
-    MY_OPENROUTER_KEY is the intended personal key for the pain-classification pass.
-    OPENROUTER_API_KEY is the SHARED key the cloud runtime uses and carries a rolling
-    daily cap — draining it is what stalled the pipeline on 2026-07-14. So the fallback
-    is allowed (classification is a few cheap calls) but is never silent: if we are
-    spending the cloud's budget, that must appear in the operator's console.
+    There is ONE key now. This used to prefer a personal MY_OPENROUTER_KEY and fall back to
+    the shared OPENROUTER_API_KEY, printing a warning about the cloud's rolling daily cap.
+    The personal key went dead on 2026-07-21 (401 on every request) and was removed from
+    .env on 2026-07-22, so the "preferred" branch could only ever fail and the "fallback"
+    was in fact the normal path — the warning fired on every run and meant nothing.
+
+    OPENROUTER_API_KEY is still the shared cloud key with a rolling daily cap (draining it
+    is what stalled the pipeline on 2026-07-14), so this is still verified before use and
+    still says when it is unusable. It just no longer pretends there is a choice.
     """
-    primary = nav_env.env("MY_OPENROUTER_KEY")
-    if primary and _key_ok(primary):
-        print("  pain-classification key: MY_OPENROUTER_KEY")
-        return primary
-    if primary:
-        print("  !! MY_OPENROUTER_KEY is INVALID (401) — not usable")
-    shared = nav_env.env("OPENROUTER_API_KEY")
-    if shared and _key_ok(shared):
-        print("  !! FALLING BACK to OPENROUTER_API_KEY — this is the SHARED cloud key with a\n"
-              "     rolling daily cap. Classification is cheap, but fix MY_OPENROUTER_KEY so\n"
-              "     routine runs stop drawing on the cloud runtime's budget.")
-        return shared
-    print("  !! No working OpenRouter key — semantic pain pass DISABLED "
-          "(leads fall back to general copy).")
+    key = nav_env.openrouter_key()
+    if key and _key_ok(key):
+        print("  pain-classification key: OPENROUTER_API_KEY")
+        return key
+    if key:
+        print("  !! OPENROUTER_API_KEY is INVALID (401) — semantic pain pass DISABLED")
+    else:
+        print("  !! No OPENROUTER_API_KEY set — semantic pain pass DISABLED")
+    print("     (leads fall back to general copy; nothing is fabricated.)")
     return None
 
 
@@ -523,8 +613,15 @@ def main() -> None:
     ap.add_argument("--verticals", default=",".join(ALL_VERTICALS))
     ap.add_argument("--dry-run", action="store_true", help="render + review, send nothing")
     ap.add_argument("--self-test", action="store_true", help="render fake leads, no CRM/cloud")
-    ap.add_argument("--llm-pain", action="store_true",
-                    help="allow the cheap LLM step for novel pain lines (MY_OPENROUTER_KEY)")
+    # ON by default (operator decision 2026-07-22). This is what makes {{2}} the lead's OWN
+    # coupled pain->solution rather than the vertical's stock paragraph. With it off, every
+    # lead in a vertical received the same block — which is both weaker copy and a
+    # deliverability signal, and it made the generated composer look like it was working
+    # while nothing it produced was ever used.
+    ap.add_argument("--llm-pain", action=argparse.BooleanOptionalAction, default=True,
+                    help="generate the per-lead pain->solution block and subject "
+                         "(OPENROUTER_API_KEY, costs a little). On by default; --no-llm-pain "
+                         "falls back to the approved library block.")
     ap.add_argument("--yes", action="store_true",
                     help="approve every rendered lead without prompting (for automation). "
                          "Does NOT override the key-balance guard — that needs "
@@ -535,6 +632,17 @@ def main() -> None:
                          "the company switchboard from the Maps listing, not the person's "
                          "mobile, so a WhatsApp would repeat a message that number already "
                          "received — spam to them, and a hit to Meta template quality.")
+    ap.add_argument("--email-via", choices=["tariq", "snov"], default="tariq",
+                    help="who dispatches the email. 'tariq' (default, unchanged) builds the "
+                         "cloud send task. 'snov' instead adds each approved lead to its "
+                         "vertical's Snov drip campaign, which is the ONLY path that carries "
+                         "the per-vertical PDF attachment and the account signature — both are "
+                         "configured once in the Snov dashboard, not per send. Prints the plan "
+                         "and stops unless --snov-confirm is also passed.")
+    ap.add_argument("--snov-confirm", action="store_true",
+                    help="with --email-via snov: actually add the leads. Adding to an ACTIVE "
+                         "campaign's list makes Snov SEND to them. Deliberately a separate flag "
+                         "from --yes, so approving a render can never also spend a send.")
     ap.add_argument("--enrich", action="store_true",
                     help="run Snov email enrichment for Not Contacted CRM leads. SPENDS "
                          "CREDITS (~1 per lead without an email). Off by default.")
@@ -604,6 +712,15 @@ def main() -> None:
         print(f"  --email-only: WhatsApp suppressed for {len(rendered)} lead(s)")
         for company in without_email:
             print(f"    skipped (no email, would have had nothing to send): {company[:44]}")
+        # Which executive summary each vertical in THIS batch needs. Printed, never sent: the
+        # attachment is uploaded once per campaign in the Snov dashboard (no send/attach API
+        # exists — see ATTACHMENT above), so the operator needs to know which file to pick.
+        verticals = sorted({r.get("sector") or "" for r in rendered} - {""})
+        if verticals:
+            print("\n  ATTACHMENT per vertical (upload in the Snov campaign, not sent from here):")
+            for v in verticals:
+                path = attachment_path(v)
+                print(f"    {v:26} -> {os.path.basename(path) if path else 'MISSING — check assets/attachments/'}")
     write_render_file(rendered)
     approved = review(rendered, assume_yes=args.yes)
     if approved is None or not approved:
@@ -612,6 +729,28 @@ def main() -> None:
     if args.self_test or args.dry_run:
         print(f"\n{'SELF-TEST' if args.self_test else 'DRY RUN'} — {len(approved)} approved, "
               f"no tasks created. Render: {RENDER_FILE}")
+        return
+
+    # ALTERNATIVE DISPATCH — same approved batch, different carrier. Everything above this line
+    # (selection, render, the approval gate) is untouched and shared; only who delivers changes.
+    # Snov is the only path that carries the per-vertical PDF and the account signature, because
+    # both live on the campaign in Snov's dashboard rather than on the individual message.
+    if args.email_via == "snov":
+        import snov_push
+        # The campaign template renders {{subject_line}}; a prospect without it is SKIPPED
+        # by Snov silently (skip_recipients_without_variables_data=true), so it is filled
+        # here rather than left to chance. generate_subject falls back to the vertical's
+        # approved subject on any failure, so this cannot leave the field empty.
+        for r in approved:
+            if not r.get("subject_line"):
+                vkey = VKEY.get(r.get("sector") or "", "")
+                r["subject_line"], _ = lina_compose.generate_subject(
+                    vkey, r.get("pains") or None, or_key or "",
+                    r.get("pain_summary") or "")
+                r["vkey"] = vkey
+        failed = snov_push.push(approved, confirm=args.snov_confirm)
+        if not args.snov_confirm:
+            print("\n(--email-via snov was a DRY RUN. Add --snov-confirm to actually enrol them.)")
         return
 
     if not preflight_key_check(force_low_balance=args.force_low_balance):

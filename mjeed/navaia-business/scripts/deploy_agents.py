@@ -21,7 +21,14 @@ import re
 import sys
 import traceback
 
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+# Only re-wrap when stdout is NOT already UTF-8. Wrapping unconditionally re-wrapped an
+# existing wrapper (e.g. under PYTHONIOENCODING=utf-8), and the discarded one was garbage
+# collected — closing the underlying buffer, so the first print died with
+# "ValueError: I/O operation on closed file" and the deploy never ran. Same guard as
+# snov_preview.py. line_buffering keeps progress visible when output is piped to a file.
+if (sys.stdout.encoding or "").lower().replace("-", "") != "utf8":
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8",
+                                  errors="replace", line_buffering=True)
 
 from navaia_forge import NavaiaForgeClient
 
@@ -75,7 +82,24 @@ def extract_prompt(fname: str) -> str | None:
     if not shared:
         print(f"!! {SHARED_FILE}: no shared_preamble block found — shipping role block only")
         return role
-    return f"{shared}\n\n{role}"
+    prompt = f"{shared}\n\n{role}"
+
+    # The operator's contact number is injected HERE rather than written in the file: the
+    # repo is mirrored into a PUBLIC SDK repo and that is a personal line. The deployed
+    # prompt still carries the real number, because an agent that does not know it would
+    # either omit the contact or — far worse — invent one.
+    #
+    # Refuse rather than ship the placeholder: a prompt reading "Contact: {{CONTACT_PHONE}}"
+    # would put that literal string in front of a prospect.
+    if "{{CONTACT_PHONE}}" in prompt:
+        phone = nav_env.env("NAVAIA_CONTACT_PHONE")
+        if not phone:
+            raise SystemExit(
+                "NAVAIA_CONTACT_PHONE is not set, and the shared preamble expects it. "
+                "Set it in .env — deploying would put the literal '{{CONTACT_PHONE}}' "
+                "into a prompt that is read out to prospects.")
+        prompt = prompt.replace("{{CONTACT_PHONE}}", phone.strip())
+    return prompt
 
 
 def main() -> None:
@@ -85,6 +109,18 @@ def main() -> None:
     args = ap.parse_args()
 
     wanted = [n.strip() for n in args.only.split(",")] if args.only else list(FILES)
+
+    # Refuse to deploy a malformed prompt. On 2026-07-22 a lost closing fence made
+    # extract_prompt sweep 39,903 chars of document prose into Lina's payload, including
+    # copy for two RETIRED verticals — and reported success. A prompt defect is invisible
+    # in the dashboard until an agent misbehaves in a live run against real businesses,
+    # so the gate belongs here rather than in a habit of remembering to run the checker.
+    import check_agent_prompts
+    if (problems := check_agent_prompts.check()):
+        print("REFUSING TO DEPLOY — prompt validation failed:")
+        for p in problems:
+            print(f"  !! {p}")
+        raise SystemExit(1)
 
     cloud = NavaiaForgeClient(api_key=_env("BUSINESS_NF"), base_url=CLOUD_BASE)
     agents = {a.name: a for a in cloud.agents.list(workforce_id=CLOUD_WF)}

@@ -96,7 +96,7 @@ wired via integrations owned by Tariq:
 | **Name** | عبدالمجيد الوردي / Abdulmajeed Alwardi |
 | **Role** | تطوير الأعمال / Business Development |
 | **Company** | نڤايا / NAVAIA |
-| **Phone** | {{CONTACT_PHONE}} |
+| **Phone** | `NAVAIA_CONTACT_PHONE` (see .env) |
 | **cal.com** | https://cal.com/abdulmajeed-alwardi |
 | **Email** | ops@navaia.sa |
 

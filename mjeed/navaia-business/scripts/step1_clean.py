@@ -11,17 +11,29 @@ INPUT_CSV = "/app/workspace/leads.csv"
 OUTPUT_CSV = "/app/workspace/leads_clean.csv"
 
 
-def extract_domain(url):
-    if not url or not url.strip():
-        return ""
-    url = url.strip()
-    if "wa.me" in url or "instagram.com" in url or "facebook.com" in url:
-        return ""
-    domain = re.sub(r"^https?://", "", url)
-    domain = re.sub(r"^www\.", "", domain)
-    domain = domain.split("/")[0]
-    domain = domain.split(":")[0]
-    return domain.lower().strip()
+# This script runs in the cloud runtime, where scripts/ may not be installed yet
+# (see cloud_bootstrap.py). Use the shared rule when it is importable; the inline
+# fallback must stay in sync with pipeline_prep._NOT_OWN_DOMAIN.
+try:
+    import sys as _sys, os as _os
+    _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+    from pipeline_prep import _domain_of as extract_domain
+except Exception:
+    _NOT_OWN = re.compile(
+        r"(^|\.)(aqar\.fm|bayut\.[a-z.]+|haraj\.com\.sa|opensooq\.com|glitch\.me|"
+        r"blogspot\.[a-z.]+|wordpress\.com|wix(site)?\.com|weebly\.com|godaddysites\.com|"
+        r"sites\.google\.com|business\.site|linktr\.ee|facebook\.com|instagram\.com|"
+        r"twitter\.com|x\.com|linkedin\.com|tiktok\.com|snapchat\.com|youtube\.com|"
+        r"wa\.me|whatsapp\.com|google\.com|maps\.app\.goo\.gl)$", re.I)
+
+    def extract_domain(url):
+        if not url or not url.strip():
+            return ""
+        domain = re.sub(r"^https?://", "", url.strip())
+        domain = re.sub(r"^www\.", "", domain).split("/")[0].split(":")[0].lower().strip()
+        if "." not in domain or _NOT_OWN.search(domain):
+            return ""
+        return domain
 
 
 def validate_phone(phone):

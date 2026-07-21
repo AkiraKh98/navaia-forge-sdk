@@ -57,10 +57,10 @@ _FORM_MID = re.compile(r"(شركة|Company|Co\.|L\.?L\.?C)", re.I)
 _FORM_SMALL = re.compile(r"(مكتب|مؤسسة|Office|Est\.?)", re.I)
 
 # Hosts that mean the business has NO real web presence of its own — a portal profile
-# or a free page. Strong negative signal for a 50+ operation.
-_NOT_OWN_DOMAIN = re.compile(
-    r"(aqar\.fm|glitch\.me|blogspot|wordpress\.com|wix(site)?\.com|facebook|instagram|"
-    r"linktr\.ee|sites\.google|business\.site|weebly|godaddysites)", re.I)
+# or a free page. Strong negative signal for a 50+ operation. The list now lives in
+# pipeline_prep so the enrichment and send paths obey the same rule this one scores on;
+# they didn't, and that sent a lead's outreach to a portal on 2026-07-21.
+_NOT_OWN_DOMAIN = prep._NOT_OWN_DOMAIN
 
 
 def _pool() -> list[dict]:
@@ -79,8 +79,10 @@ def _pool_index() -> tuple[dict, dict, dict]:
         stem = re.sub(r"\s*[\(（][^)）]*[\)）]\s*$", "", (lead.get("name") or "")).strip()
         if stem:
             name_counts[stem] = name_counts.get(stem, 0) + 1
-        host = urlparse(lead.get("website") or "").netloc.lower().replace("www.", "")
-        if host and not _NOT_OWN_DOMAIN.search(host):
+        # Portal hosts are excluded deliberately: a hundred agencies share aqar.fm,
+        # and counting that as "100 branches" would score every one of them as huge.
+        host = prep._domain_of(lead.get("website") or "")
+        if host:
             domain_counts[host] = domain_counts.get(host, 0) + 1
     return by_phone, name_counts, domain_counts
 
@@ -108,7 +110,7 @@ def size_proxy(lead: dict, pool_row: dict, branches: int) -> tuple[int, list[str
         signals.append("form:office/est(small)")
 
     site = lead.get("website") or ""
-    if site and not _NOT_OWN_DOMAIN.search(site):
+    if site and prep.is_own_domain(site):
         score += 20
         signals.append("own_domain")
     elif site:

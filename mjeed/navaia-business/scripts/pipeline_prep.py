@@ -156,12 +156,85 @@ def _snov(method: str, path: str, **kw):
         return {"error": str(e)}
 
 
+# Hosts that are somebody ELSE's property — a listings portal, a social profile, a free
+# page builder. A lead whose "website" is one of these has no domain of its own.
+#
+# This list used to exist only in rank_priority_leads.py, where it produced a scoring
+# signal, while the enrichment and send paths each carried their own shorter copy that
+# omitted the portals. On 2026-07-21 that gap sent a lead's outreach to the PORTAL's
+# own generic mailbox:
+# the lead's website was an aqar.fm profile page, the crawler harvested the PORTAL's
+# mailbox, and the "email domain must match site domain" guard endorsed it because it
+# matched perfectly. One rule, one place, used by everything that touches a website.
+_NOT_OWN_DOMAIN = re.compile(
+    r"(^|\.)("
+    r"aqar\.fm|bayut\.[a-z.]+|haraj\.com\.sa|opensooq\.com|"
+    r"glitch\.me|blogspot\.[a-z.]+|wordpress\.com|wix(site)?\.com|weebly\.com|"
+    r"godaddysites\.com|sites\.google\.com|business\.site|linktr\.ee|"
+    r"facebook\.com|instagram\.com|twitter\.com|x\.com|linkedin\.com|tiktok\.com|"
+    r"snapchat\.com|youtube\.com|wa\.me|whatsapp\.com|google\.com|maps\.app\.goo\.gl"
+    r")$", re.I)
+
+
+def is_own_domain(url: str) -> bool:
+    """True only if `url`'s host plausibly belongs to the lead itself.
+
+    Fails closed: an empty or unparseable URL is NOT the lead's own domain.
+    """
+    return bool(_domain_of(url))
+
+
 def _domain_of(url: str) -> str:
-    if not url or any(s in url for s in ("wa.me", "instagram.com", "facebook.com", "google.com")):
+    """Bare host of `url`, or '' when the host belongs to a third party.
+
+    Returning '' is what suppresses downstream work — crawling for an email,
+    spending a Snov credit, trusting an address — so a portal URL reads exactly
+    like no website at all, which is what it is.
+    """
+    if not url:
         return ""
     d = re.sub(r"^https?://", "", url.strip())
     d = re.sub(r"^www\.", "", d).split("/")[0].split(":")[0].lower()
-    return d if "." in d else ""
+    if "." not in d or _NOT_OWN_DOMAIN.search(d):
+        return ""
+    return d
+
+
+FREE_MAIL = {"gmail.com", "hotmail.com", "outlook.com", "yahoo.com", "icloud.com",
+             "live.com", "msn.com", "aol.com", "protonmail.com"}
+
+
+def email_belongs_to(email: str, url: str) -> bool:
+    """False only when `email` is on a host that belongs to a THIRD PARTY.
+
+    Deliberately narrow. The first version of this also required the mailbox host to
+    equal the website host, and a dry run showed it dropping 9 good leads to catch 1
+    bad one: companies legitimately mail from a second domain (site `ipi.com.sa`,
+    mail `ipi.sa`; site `cstc.sa`, mail `cstc.me`). A mismatch between two PRIVATE
+    domains is normal. What is never normal is a mailbox on a listings portal or a
+    social network — nobody's corporate mail lives at aqar.fm — and that is the case
+    that actually sent one company's outreach to another on 2026-07-21.
+
+    Mismatch between private domains is surfaced by `email_domain_mismatch` instead,
+    which warns without suppressing the send.
+    """
+    email = (email or "").strip().lower()
+    if "@" not in email:
+        return False
+    host = email.rsplit("@", 1)[-1]
+    return bool(host) and not _NOT_OWN_DOMAIN.search(host)
+
+
+def email_domain_mismatch(email: str, url: str) -> bool:
+    """True when a valid-looking address sits on a different private domain than the site.
+
+    Advisory only — worth a human glance in the approval table, not worth a drop.
+    """
+    host = (email or "").strip().lower().rsplit("@", 1)[-1]
+    own = _domain_of(url)
+    if not host or not own or host in FREE_MAIL:
+        return False
+    return not (host == own or host.endswith("." + own) or own.endswith("." + host))
 
 
 def _pick_email(emails: list[str]) -> str:

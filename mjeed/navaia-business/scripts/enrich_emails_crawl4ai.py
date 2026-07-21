@@ -51,11 +51,17 @@ JUNK = re.compile(r"(sentry|wixpress|example\.|godaddy|cloudflare|jquery|\.png$|
 PREFERRED = ["info@", "contact@", "sales@", "admin@", "support@", "office@"]
 
 
-def harvest(markdown: str, domain: str) -> list[str]:
+def harvest(markdown: str, domain: str, site: str = "") -> list[str]:
     found = []
     for e in EMAIL_RE.findall(markdown or ""):
         e = e.strip().lower().rstrip(".")
         if JUNK.search(e) or e in found:
+            continue
+        # A mailbox on a third-party host is that host's, not the lead's. The
+        # same-domain sort below would otherwise RANK IT FIRST when the page we
+        # crawled IS the third party — how a property portal's own info@ mailbox got
+        # sent a lead's outreach on 2026-07-21.
+        if not prep.email_belongs_to(e, site or f"https://{domain}"):
             continue
         found.append(e)
     # Same-domain addresses first — a lead's own mailbox beats a webmaster's gmail.
@@ -70,6 +76,10 @@ def best_email(site: str, budget_pages: int = 4) -> tuple[str, list[str], list[s
     if not site.startswith("http"):
         site = "https://" + site
     domain = urlparse(site).netloc or site
+    # No point crawling somebody else's portal for the lead's mailbox — it isn't there,
+    # and anything found belongs to the portal. Treat it as "no website", which it is.
+    if not prep.is_own_domain(site):
+        return "", [], []
     all_found: list[str] = []
     tried: list[str] = []
     for path in CONTACT_PATHS[:budget_pages]:
@@ -82,7 +92,7 @@ def best_email(site: str, budget_pages: int = 4) -> tuple[str, list[str], list[s
         markdown = polite_fetch.fetch(url)
         if not markdown:
             continue
-        for e in harvest(markdown, domain):
+        for e in harvest(markdown, domain, site):
             if e not in all_found:
                 all_found.append(e)
         if all_found:                     # stop as soon as we have something real

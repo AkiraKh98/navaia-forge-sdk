@@ -66,7 +66,11 @@ def snov_get(path):
 # 1. Check Snov.io account balance/credits
 print("=== SNOV.IO ACCOUNT INFO ===", flush=True)
 token = get_token()
-print(f"Token OK: {token[:20]}...", flush=True)
+# Never print any part of a live access token. The first 20 characters were being echoed
+# to stdout, which lands in terminal scrollback, CI logs and pasted screenshots — and a
+# Snov token spends real credits. That it is a prefix is not a mitigation; what is needed
+# here is only "did auth work", which does not require the value.
+print(f"Token OK ({len(token)} chars, not shown)", flush=True)
 
 # Check credits
 resp = snov_get("/v1/get-balance")

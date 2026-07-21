@@ -7,7 +7,7 @@ import csv, json, time, urllib.request, urllib.parse, urllib.error, sys, io, re
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
-import os as _os, re as _re
+import os as _os, re as _re, sys as _sys
 
 
 def _secret(_name):
@@ -72,16 +72,13 @@ def snov_get(path):
         return {"error": str(e)}
 
 def extract_domain(url):
-    if not url or not url.strip():
-        return ""
-    url = url.strip()
-    if "wa.me" in url or "instagram.com" in url or "facebook.com" in url:
-        return ""
-    domain = re.sub(r"^https?://", "", url)
-    domain = re.sub(r"^www\.", "", domain)
-    domain = domain.split("/")[0]
-    domain = domain.split(":")[0]
-    return domain.lower().strip()
+    """'' when the URL is a third party's — see pipeline_prep._NOT_OWN_DOMAIN.
+
+    Returning '' here also stops a Snov credit being spent looking up a portal.
+    """
+    _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+    import pipeline_prep as prep
+    return prep._domain_of(url)
 
 def fetch_emails_for_domain(domain):
     """Fetch emails from Snov.io v2 API for a domain. Returns list of email strings."""

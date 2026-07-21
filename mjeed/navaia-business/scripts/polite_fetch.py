@@ -25,8 +25,10 @@ from __future__ import annotations
 
 import hashlib
 import io
+import ipaddress
 import json
 import os
+import socket
 import sys
 import time
 from urllib.parse import urljoin, urlparse
@@ -102,12 +104,56 @@ def throttle(url: str) -> None:
     _last_hit[host] = time.time()
 
 
+def is_public_url(url: str) -> bool:
+    """True only for an http(s) URL that resolves to a PUBLIC address.
+
+    Every URL reaching fetch() comes from a scraped `website` field — data written by
+    strangers on a Google Maps listing, not by us. Without this check that value chooses
+    what the crawler connects to, which is a server-side request forgery: in the cloud
+    runtime `http://169.254.169.254/` is the instance metadata service, and its response
+    would be stored in the page cache and then fed to the model as if it were a company's
+    About page. `file://` would do the same for local files.
+
+    So: http(s) only, and every resolved address must be global. Resolution happens here
+    rather than trusting the hostname, because a name under someone else's control can
+    simply point at a private address. This is not airtight against a DNS rebind between
+    this check and the request — closing that needs pinning at the socket layer — but it
+    stops the whole class of attack that a scraped field actually enables.
+    """
+    try:
+        parts = urlparse(url)
+    except ValueError:
+        return False
+    if parts.scheme not in ("http", "https") or not parts.hostname:
+        return False
+    try:
+        infos = socket.getaddrinfo(parts.hostname, parts.port or
+                                   (443 if parts.scheme == "https" else 80),
+                                   proto=socket.IPPROTO_TCP)
+    except (socket.gaierror, UnicodeError, ValueError):
+        return False            # unresolvable is a miss, exactly like an unreachable site
+    for info in infos:
+        try:
+            ip = ipaddress.ip_address(info[4][0])
+        except ValueError:
+            return False
+        # is_global excludes loopback, link-local (metadata), private, reserved and
+        # multicast in one predicate — safer than enumerating ranges by hand.
+        if not ip.is_global:
+            return False
+    return bool(infos)
+
+
 def fetch(url: str) -> str:
     """Markdown for one URL, or '' on any failure. Never raises — a dead site is a miss.
 
     Returns '' for a robots-disallowed path too: a page we are not permitted to read is
     recorded as unknown, exactly like an unreachable one. We do not fetch it anyway.
     """
+    # Before robots, before throttling: a non-public target is not a site we are choosing
+    # to be polite to, it is a request we must not make at all.
+    if not is_public_url(url):
+        return ""
     if not allowed(url):
         return ""
     throttle(url)

@@ -47,6 +47,15 @@ def collect() -> list[dict]:
         email = (p.get("emails") or {}).get("primaryEmail") or ""
         if not email:
             continue
+        # Same check outreach.py makes. This script is a SECOND send path that reads the
+        # CRM address directly, so the guard added there on 2026-07-21 did not cover it —
+        # a portal mailbox sitting in the CRM would be mailed the moment the lead's status
+        # flipped to WhatsApped. A guard at one choke point is not a fence.
+        site = ((p.get("company") or {}).get("domainName") or {}).get("primaryLinkUrl") or ""
+        if not prep.email_belongs_to(email, site):
+            print(f"  SKIPPED {((p.get('company') or {}).get('name') or '')[:40]}: "
+                  f"{email} is a third party's mailbox (site {site or '-'})")
+            continue
         name = " ".join(x for x in [(p.get("name") or {}).get("firstName"),
                                     (p.get("name") or {}).get("lastName")] if x).strip()
         company = (p.get("company") or {}).get("name") or name

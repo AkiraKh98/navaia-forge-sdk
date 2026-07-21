@@ -96,6 +96,36 @@ def _scrub_provider_key(path: str) -> bool:
     return True
 
 
+def _scrub_contact_phone(path: str) -> int:
+    """Put the contact number back to its placeholder in every agent instruction.
+
+    deploy_agents INJECTS NAVAIA_CONTACT_PHONE into the shared preamble, so the LIVE prompt
+    on every agent contains the real number. A snapshot copies those prompts verbatim, and
+    this bundle is committed to a repo mirrored publicly — so without this the number is
+    laundered straight back into the public repo the moment anyone runs an export, and the
+    placeholder in `_shared_preamble.md` achieves nothing.
+
+    Symmetric with `_scrub_provider_key`. Returns how many instructions were scrubbed.
+    """
+    phone = (nav_env.env("NAVAIA_CONTACT_PHONE") or "").strip()
+    if not phone:
+        return 0
+    with io.open(path, encoding="utf-8") as fh:
+        bundle = json.load(fh)
+    n = 0
+    for agent in bundle.get("agents") or []:
+        text = agent.get("instructions") or ""
+        if phone in text:
+            agent["instructions"] = text.replace(phone, "{{CONTACT_PHONE}}")
+            n += 1
+    if not n:
+        return 0
+    with io.open(path, "w", encoding="utf-8") as fh:
+        json.dump(bundle, fh, indent=2)
+        fh.write("\n")
+    return n
+
+
 def _rehydrate_provider_key(path: str) -> str:
     """Write a temp copy of the bundle with the real provider key restored.
 
@@ -129,6 +159,9 @@ def do_export() -> None:
     bundle = client.sync.export_to_file(nav_env.CLOUD_WORKFORCE_ID, SNAPSHOT)
     if _scrub_provider_key(SNAPSHOT):
         print("  provider_api_key scrubbed (restored from OPENROUTER_API_KEY on import)")
+    if (n := _scrub_contact_phone(SNAPSHOT)):
+        print(f"  contact number scrubbed from {n} agent prompt(s) "
+              f"(re-injected from NAVAIA_CONTACT_PHONE at deploy)")
     print(f"Wrote {SNAPSHOT}")
     _summarize(bundle)
     print("\nCommit workforce/snapshot/workforce_bundle.json to git to make this state reproducible.")

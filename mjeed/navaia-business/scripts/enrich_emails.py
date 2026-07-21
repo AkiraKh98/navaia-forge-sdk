@@ -16,8 +16,11 @@ Phase 3: Verify any newly found emails via Snov.io v2/email-verification
 
 Phase 4: Write final CSV with all results
 """
-import sys, io, json, csv, re, time, urllib.request, urllib.parse, urllib.error
+import sys, io, json, csv, os, re, time, urllib.request, urllib.parse, urllib.error
 from html.parser import HTMLParser
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import pipeline_prep as prep
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
@@ -127,9 +130,10 @@ def extract_emails_from_html(html, domain):
         # Skip very long emails (likely false positive)
         if len(email) > 80:
             continue
-        # Skip if email domain doesn't match the site domain (unless it's a known provider)
-        if email_domain and domain and domain not in email_domain and email_domain not in domain:
-            # Allow common email providers but skip random ones
+        # Must plausibly be the LEAD's own mailbox. The old test here was only
+        # "same domain as the page", which passes trivially — and wrongly — when the
+        # page we crawled is a portal profile rather than the lead's own site.
+        if not prep.email_belongs_to(email, f"https://{domain}" if domain else ""):
             continue
         clean.add(email)
 
@@ -139,6 +143,12 @@ def extract_emails_from_html(html, domain):
 def crawl_website_for_emails(domain):
     """Crawl homepage + common contact pages to find emails."""
     if not domain:
+        return []
+
+    # A portal profile or social page is not the lead's site; crawling it finds the
+    # portal's mailbox and nothing of the lead's.
+    if not prep.is_own_domain(domain if domain.startswith("http") else "https://" + domain):
+        print(f"      skipped (not the lead's own domain): {domain}", flush=True)
         return []
 
     # Normalize domain
