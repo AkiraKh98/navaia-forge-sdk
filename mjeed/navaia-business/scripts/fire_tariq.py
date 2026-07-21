@@ -14,7 +14,7 @@ desc = """## MANIFEST FROM LINA
 - Email: Use your tools to find in CRM
 - WhatsApp Vars: `["حضرة المسؤول", "تأخّر متابعة العطاءات...", "EXAMPLE MEP", "https://cal.com/abdulmajeed-alwardi", "عبدالمجيد الوردي"]`
 
-**شركة المثال العقارية:**
+**شركة المثال للخدمات العقارية:**
 - Contact ID: Use your tools to find in CRM
 - Phone only (no email available)
 - WhatsApp Vars: `["حضرة المسؤول", "Managing property listings...", "شركة المثال", "https://cal.com/abdulmajeed-alwardi", "عبدالمجيد الوردي"]`

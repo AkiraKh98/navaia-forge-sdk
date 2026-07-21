@@ -3,23 +3,26 @@ import sys
 import json
 import subprocess
 
-def agent_scraping_skill(url: str, selectors: dict = {}) -> dict:
+def agent_scraping_skill(url: str) -> dict:
     """
     Safe, isolated scraping tool executed cleanly within your existing venv.
     Executes the micro_scraper.py using the exact same venv Python executable.
+
+    Returns {"status": "success", "markdown": ...} for the fetched page. There is no
+    selector/CSS-extraction path: micro_scraper returns the page markdown and every caller
+    parses that. A `selectors` argument used to exist here and was passed through to the
+    subprocess, but micro_scraper never used it — so it was a silent no-op and was removed.
     """
     # Force the script to execute using your CURRENT venv's python binary
-    venv_python = sys.executable 
-    
+    venv_python = sys.executable
+
     # Path to your micro-scraper script
     script_path = os.path.join(os.path.dirname(__file__), "micro_scraper.py")
-    
-    selectors_str = json.dumps(selectors)
-    
+
     try:
         # Run as a separate operating system process capped by a hard timeout
         process = subprocess.run(
-            [venv_python, script_path, url, selectors_str],
+            [venv_python, script_path, url],
             capture_output=True,
             text=True,
             # text=True alone decodes with the SYSTEM codec (cp1252 on Windows), which

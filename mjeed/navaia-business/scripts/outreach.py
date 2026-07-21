@@ -109,8 +109,23 @@ def short_name(company: str) -> str:
     """
     s = company.strip()
 
-    # 1. Drop trailing parentheticals — almost always a branch/location, never the name.
-    s = re.sub(r"\s*[\(（][^)）]*[\)）]\s*$", "", s).strip()
+    # 1. Drop parentheticals ANYWHERE — a listing title carries them mid-string too
+    #    ("شركة المثال ... ( مكتب عقار ) ..."), not only at the end. Name invented — this
+    #    file ships to a PUBLIC repo, so never paste a real listing title here.
+    s = re.sub(r"\s*[\(（][^)）]*[\)）]\s*", " ", s).strip()
+
+    # 1b. Underscores are Google-Maps keyword-salad ("… بيع _تأجير _ادارة املاك"): a real
+    #     company name never contains one. Cut from the first underscore-run onward.
+    if "_" in s:
+        s = s.split("_")[0].strip()
+    # 1c. …then peel any trailing standalone service words the salad left behind
+    #     ("… العقارية بيع" -> "… العقارية"). A separate word only, never a name fragment.
+    for _ in range(4):
+        s2 = re.sub(r"\s(بيع|شراء|تأجير|إيجار|ايجار|إدارة|ادارة|أملاك|املاك|عقارات|تسويق|صيانة)\s*$",
+                    "", s).strip()
+        if s2 == s or len(s2) < 3:
+            break
+        s = s2
 
     # 2. Bilingual "English - Arabic" (or the reverse): keep the Arabic side, since the
     #    whole message is Arabic. Only when exactly one side is Arabic, so we never split
@@ -190,7 +205,9 @@ def render_lead(lead: dict, use_llm: bool, or_key: str | None) -> dict:
     block, meta = lina_compose.compose_block(vkey, pain_line, use_llm=use_llm, key=or_key)
 
     wa = prep.wa_templates()[vertical]
-    wa_vars = [honorific, block, company, CAL, SIG]
+    # {{3}} is the business name in the body — it must be the CLEAN name too, not the raw
+    # listing title (the message showed the raw "… ( مكتب عقار ) بيع _تأجير _ادارة املاك").
+    wa_vars = [honorific, block, short_name(company), CAL, SIG]
     preview = wa["body"]
     for i, v in enumerate(wa_vars, 1):
         preview = preview.replace("{{%d}}" % i, v)
@@ -521,6 +538,9 @@ def main() -> None:
     ap.add_argument("--enrich", action="store_true",
                     help="run Snov email enrichment for Not Contacted CRM leads. SPENDS "
                          "CREDITS (~1 per lead without an email). Off by default.")
+    ap.add_argument("--limit", type=int, default=0,
+                    help="cap the batch to the first N leads after all filters (a graduated "
+                         "ramp — e.g. a first live batch on a proven template). 0 = no cap.")
     ap.add_argument("--min-employees", type=int, default=0,
                     help="only leads CONFIRMED at this headcount or above, per "
                          "company_size.json (operator rule 2026-07-20: 50+ = high "
@@ -569,6 +589,10 @@ def main() -> None:
             print("No leads meet the size threshold — run scripts/enrich_company_size.py "
                   "(free) then enrich_company_size_snov.py to size more.")
             return
+
+    if args.limit and len(leads) > args.limit:
+        print(f"  --limit: capping {len(leads)} lead(s) to the first {args.limit}.")
+        leads = leads[:args.limit]
 
     rendered = [render_lead(l, args.llm_pain, or_key) for l in leads]
     if args.email_only:

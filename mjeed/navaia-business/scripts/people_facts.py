@@ -308,8 +308,36 @@ def _self_test() -> None:
 ENRICHED_POOL = "leads_enriched_people.json"
 
 
+def _fetch_people_deadlined(cache, base: str, budget: int, max_seconds: int):
+    """Run one lead's whole multi-page fetch under a wall-clock ceiling.
+
+    The per-FETCH guard inside polite_fetch was not enough: on 2026-07-21 a site's browser
+    outlived it and the run hung, because get_many fetches up to `budget` pages and a single
+    hung page blocks the loop with no way to interrupt a synchronous call. So the ceiling is
+    enforced per LEAD here — the fetch runs in a daemon worker and, if it does not finish in
+    time, the lead is abandoned and the loop moves on. The stuck worker is a daemon, so it
+    cannot hold the process open; it is reaped at exit. Returns (pages, error).
+    """
+    import threading
+    box: dict = {"pages": None, "err": None}
+
+    def work():
+        try:
+            box["pages"] = cache.get_many(base, [""] + PEOPLE_PATHS, budget=budget)
+        except Exception as e:                      # one bad site must not sink the batch
+            box["err"] = str(e)[:120]
+
+    t = threading.Thread(target=work, daemon=True)
+    t.start()
+    t.join(max_seconds)
+    if t.is_alive():
+        return None, f"abandoned: no response within {max_seconds}s wall-clock"
+    return box["pages"], box["err"]
+
+
 def enrich_pool(pool_path: str, out_path: str | None = None,
-                limit: int | None = None, budget: int = 5) -> list[dict]:
+                limit: int | None = None, budget: int = 5,
+                max_seconds: int = 120) -> list[dict]:
     """Attach the best named person to each lead in the compact scrape pool.
 
     Person-first, company-fallback: writes lead["person"] = {name, role, email, phone} when a
@@ -318,6 +346,10 @@ def enrich_pool(pool_path: str, out_path: str | None = None,
     that already has a "person" key is skipped, so the run resumes after an interruption. Writes
     to out_path (a gitignored PII file, NOT back into the tracked pool) after each lead, so a
     long scrape is never lost and no named-individual data lands in the tracked source.
+
+    Each lead's fetch runs under a `max_seconds` wall-clock ceiling (default 120s): a site that
+    does not answer in time is abandoned with person_error set, and the run continues. This is
+    the guard that was missing when the 2026-07-21 run hung on one slow site.
     """
     import polite_fetch
     if out_path is None:
@@ -338,13 +370,13 @@ def enrich_pool(pool_path: str, out_path: str | None = None,
         if not site.startswith("http"):
             site = "https://" + site
         base = site.rstrip("/") + "/"
-        try:
-            pages = cache.get_many(base, [""] + PEOPLE_PATHS, budget=budget)
-            people = from_pages(pages)
-        except Exception as e:                      # one bad site must not sink the batch
+        pages, err = _fetch_people_deadlined(cache, base, budget, max_seconds)
+        if err or pages is None:
             lead["person"] = {}
-            lead["person_error"] = str(e)[:120]
+            lead["person_error"] = err or "no pages"
             people = []
+        else:
+            people = from_pages(pages)
         best = people[0] if people else None
         lead["person"] = ({"name": best["name"], "role": best["role"],
                            "email": best.get("email", ""), "phone": best.get("phone", "")}
@@ -373,10 +405,14 @@ def main() -> None:
         limit = None
         if "--limit" in sys.argv:
             limit = int(sys.argv[sys.argv.index("--limit") + 1])
-        enrich_pool(pool_path, limit=limit)
+        max_seconds = 120
+        if "--max-seconds" in sys.argv:
+            max_seconds = int(sys.argv[sys.argv.index("--max-seconds") + 1])
+        enrich_pool(pool_path, limit=limit, max_seconds=max_seconds)
         return
     if len(sys.argv) < 2:
-        raise SystemExit("usage: people_facts.py <url> | --pool <leads.json> [--limit N] | --self-test")
+        raise SystemExit("usage: people_facts.py <url> | --pool <leads.json> "
+                         "[--limit N] [--max-seconds S] | --self-test")
 
     import polite_fetch
     site = sys.argv[1]

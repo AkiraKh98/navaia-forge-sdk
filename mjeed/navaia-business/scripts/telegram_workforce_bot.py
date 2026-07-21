@@ -65,13 +65,18 @@ V2 = ("في العمل العقاري، قد يبرد المهتمّ خلال د
       "أطول مما ينبغي. نڤايا تعمل إلى جانبكم فتردّ على مهتمّيكم فور وصولهم وتتابع تحصيل الإيجارات، دون عبء إضافي على فريقكم.")
 V4 = "https://cal.com/abdulmajeed-alwardi"
 V5 = "عبدالمجيد الوردي"
+# INVENTED demo rows — this file ships to a PUBLIC repo. Three REAL prospects with their REAL
+# mobile numbers were hardcoded here until 2026-07-21 and reached the public fork. Never paste a
+# real lead into this list: it is the legacy /send demo path (disconnected from the CRM pipeline
+# and due for retirement), so nothing is gained by it holding live data, and fake numbers also
+# mean a stray tap on the demo path cannot message a real person.
 LEADS = {
     1: {"name": "شركة المثال العقارية", "to": "+966500000001",
         "v1": "القائمون على شركة المثال الكرام", "v3": "شركة المثال العقارية"},
     2: {"name": "مؤسسة النموذج العقارية", "to": "+966500000002",
-        "v1": "القائمون على مؤسسة النموذج العقارية الكرام", "v3": "مؤسسة النموذج العقارية"},
+        "v1": "القائمون على مؤسسة النموذج الكرام", "v3": "مؤسسة النموذج العقارية"},
     3: {"name": "مجموعة التجربة العقارية", "to": "+966500000003",
-        "v1": "القائمون على مجموعة التجربة العقارية الكرام", "v3": "مجموعة التجربة العقارية"},
+        "v1": "القائمون على مجموعة التجربة الكرام", "v3": "مجموعة التجربة العقارية"},
 }
 
 

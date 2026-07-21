@@ -102,7 +102,7 @@ def _num(s: str) -> int:
 # Re-exported under the old private names so existing callers and tests keep working.
 from polite_fetch import (  # noqa: E402
     DEFAULT_DELAY, allowed as _allowed, fetch as _scrape, robots as _robots,
-    throttle as _throttle,
+    save_store, throttle as _throttle,
 )
 
 
@@ -196,22 +196,18 @@ def load_cache() -> dict:
 def save_cache(cache: dict) -> None:
     """Merge into whatever is on disk, then write atomically.
 
-    A plain dump of the in-memory dict is a lost-update bug when two sizing runs overlap
-    (crawl + Snov, or two crawls). That happened on 2026-07-20: a long crawl holding a
-    snapshot from before a Snov run finished afterwards and erased 16 credits' worth of
-    Snov verdicts, one save at a time. Re-read on every write so a concurrent writer's
-    entries survive, and never leave a half-written file behind if we are killed mid-dump.
+    Delegates to polite_fetch.save_store — the one implementation of read-merge-atomic-write
+    in the repo — so this cache and the shared page/state store cannot drift apart. The
+    behaviour is unchanged and still matters: a plain dump is a lost-update bug when two
+    sizing runs overlap (crawl + Snov, or two crawls). That happened on 2026-07-20, when a
+    long crawl holding a stale snapshot erased 16 credits' worth of Snov verdicts one save at
+    a time. save_store re-reads before every write so a concurrent writer's entries survive,
+    and os.replace never leaves a half-written file if we are killed mid-dump.
 
     A later verdict for the SAME lead still wins — that is a deliberate refresh, not a
     clash. Only entries this process never touched are preserved from disk.
     """
-    merged = load_cache()
-    merged.update(cache)
-    tmp = CACHE + ".tmp"
-    with io.open(tmp, "w", encoding="utf-8") as f:
-        json.dump(merged, f, ensure_ascii=False, indent=1)
-    os.replace(tmp, CACHE)  # atomic on both POSIX and Windows
-    cache.update(merged)    # keep the caller's view consistent with disk
+    save_store(CACHE, cache)
 
 
 def main() -> None:

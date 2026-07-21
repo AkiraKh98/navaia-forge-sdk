@@ -38,18 +38,12 @@ USER_AGENT = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
               "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
 
 async def main():
-    if len(sys.argv) < 3:
-        print(json.dumps({"status": "error", "message": "Usage: python micro_scraper.py <url> <selectors_json> [user_agent]"}))
+    if len(sys.argv) < 2:
+        print(json.dumps({"status": "error", "message": "Usage: python micro_scraper.py <url> [user_agent]"}))
         sys.exit(1)
 
     url = sys.argv[1]
-    try:
-        selectors = json.loads(sys.argv[2])
-    except Exception as e:
-        print(json.dumps({"status": "error", "message": f"Invalid selectors JSON: {e}"}))
-        sys.exit(1)
-
-    user_agent = sys.argv[3] if len(sys.argv) > 3 else USER_AGENT
+    user_agent = sys.argv[2] if len(sys.argv) > 2 else USER_AGENT
 
     try:
         # Redirect the crawler's progress banners to stderr so stdout stays pure JSON.
