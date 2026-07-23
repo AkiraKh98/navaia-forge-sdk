@@ -49,6 +49,7 @@ import shutil
 import subprocess
 import sys
 import time
+from urllib.parse import urlparse
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -60,6 +61,7 @@ import polite_fetch
 import site_facts
 import people_facts
 import crm_write
+import enrich_emails_crawl4ai
 import distill_scraped_leads as distill
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
@@ -308,7 +310,16 @@ def step_reviews(lead: dict, spend: bool, key: str | None = None) -> dict:
 
 
 def step_site(lead: dict, cache: polite_fetch.PageCache, budget: int) -> dict:
-    """Emails, headcount and opener facts from ONE crawl of the company's own site."""
+    """Emails and opener facts from ONE crawl of the company's own site.
+
+    Email harvest was missing until 2026-07-23: this step called `site_facts.extract`,
+    which only reads opener numerics (branches/projects/years) and never emails, so a
+    10-lead pilot enriched 0 addresses despite `info@`/`sales@` sitting in plain text on
+    the fetched pages. The company mailbox is the single highest-value field the CRM lacks
+    for this pool, so it is harvested HERE — from the SAME page text already fetched, at no
+    extra crawl cost — using the shared harvester whose portal guard prevents the
+    2026-07-21 misdirected send.
+    """
     website = own_website(lead)
     if not website:
         return {}
@@ -318,12 +329,17 @@ def step_site(lead: dict, cache: polite_fetch.PageCache, budget: int) -> dict:
         return {}
 
     merged = "\n\n".join(pages.values())
-    facts = site_facts.extract(merged)
     out: dict = {}
+
+    facts = site_facts.extract(merged)
     if facts:
         out["site_facts"] = facts
-    if (count := facts.get("employee_count")):
-        out["employee_count"] = count
+
+    domain = urlparse(base).netloc or base
+    emails = enrich_emails_crawl4ai.harvest(merged, domain, base)
+    if emails:
+        out["site_emails"] = emails
+        out["site_email"] = emails[0]
     return out
 
 
@@ -403,12 +419,38 @@ def run(args) -> int:
     done = state.get("done", {})
     cache = polite_fetch.PageCache()
 
-    pending = [l for l in candidates if lead_key(l) not in done]
+    # A checkpoint means "done" only for the work that ACTUALLY RAN.
+    #
+    # `--crm-only` skips reviews/site/people by design, but it wrote the same `done` entry
+    # as a full pass. So the cheap sweep of 2026-07-21 marked all 233 leads done, and every
+    # full run afterwards computed pending=0 and printed "Nothing to do." — while enrichment
+    # had never executed even once. The expensive step was masked by the cheap one, and the
+    # run reported success for work it never did.
+    #
+    # `enriched` records which happened. A full run therefore re-opens a lead that only ever
+    # got the CRM sweep, while a `--crm-only` run keeps the old cheap behaviour and re-opens
+    # nothing. `--redo` forces everything through regardless.
+    def needs_work(lead) -> bool:
+        entry = done.get(lead_key(lead))
+        if entry is None:
+            return True
+        if args.redo:
+            return True
+        if args.crm_only:
+            return False
+        return not entry.get("enriched", False)
+
+    pending = [l for l in candidates if lead_key(l) and needs_work(l)]
+    reopened = sum(1 for l in pending if lead_key(l) in done)
     if args.limit:
         pending = pending[:args.limit]
 
     print(f"source={args.source}  candidates={len(candidates)}  "
           f"already done={len(done)}  this run={len(pending)}")
+    if reopened:
+        print(f"  ({reopened} previously checkpointed WITHOUT enrichment — re-opened; "
+              f"the CRM write is a non-destructive merge, so this updates rather than "
+              f"duplicates)")
     if args.dry_run:
         print("DRY RUN — no CRM writes will be made.\n")
     if not pending:
@@ -447,6 +489,9 @@ def run(args) -> int:
             if not args.dry_run:
                 done[key] = {"name": name, "at": time.strftime("%Y-%m-%dT%H:%M:%S"),
                              "crm": "skipped:portal", "company_id": "",
+                             # A portal verdict is a property of the lead, not of this
+                             # run, so it counts as settled at any enrichment level.
+                             "enriched": True,
                              "facts": rescue_facts(lead)}
                 polite_fetch.save_store(STATE_PATH, {"done": done})
             continue
@@ -470,12 +515,28 @@ def run(args) -> int:
                         done[key] = {"name": name,
                                      "at": time.strftime("%Y-%m-%dT%H:%M:%S"),
                                      "crm": "skipped:qualify", "company_id": "",
-                                     "reason": reason, "facts": rescue_facts(lead)}
+                                     "reason": reason, "enriched": True,
+                                     "facts": rescue_facts(lead)}
                         polite_fetch.save_store(STATE_PATH, {"done": done})
                     continue
                 record.update(step_reviews(lead, spend=args.llm, key=_llm_key()))
                 record.update(step_site(record, cache, args.page_budget))
                 record.update(step_people(record, cache, args.page_budget))
+                # step_people runs AFTER step_site and REPLACES record["person"], so the
+                # site email is reconciled here, once both have run. A named person's OWN
+                # address always wins; the company mailbox (info@) fills a person who has
+                # none — including the company-as-person placeholder when no human was
+                # found — because reaching info@ still reaches the business, and it is the
+                # only sendable address this pool yields for most leads.
+                if record.get("site_email"):
+                    person = record.setdefault("person", {})
+                    # NOT setdefault: people_facts ALWAYS writes an "email" key, empty when
+                    # it found a named person but no personal address (people_facts.py:234).
+                    # setdefault treats that present-but-empty key as "already set" and drops
+                    # the company mailbox — which is precisely when we most need it, since a
+                    # named contact with no email is otherwise unreachable. Fill on empty.
+                    if not (person.get("email") or "").strip():
+                        person["email"] = record["site_email"]
             # The company id this place_id resolved to before — stands in for the
             # `placeId` field Twenty does not have. Exact, and free to consult.
             result = step_write(record, index, args.dry_run,
@@ -500,6 +561,9 @@ def run(args) -> int:
             done[key] = {"name": name, "at": time.strftime("%Y-%m-%dT%H:%M:%S"),
                          "crm": result.get("crm", ""),
                          "company_id": result.get("company_id") or "",
+                         # False after a --crm-only sweep, so a later full run re-opens
+                         # this lead instead of treating the cheap pass as complete.
+                         "enriched": not args.crm_only,
                          # See RESCUE_FIELDS: what the CRM schema cannot hold, so that
                          # deleting the local leads file loses nothing.
                          "facts": rescue_facts(lead)}
@@ -562,6 +626,10 @@ def main() -> int:
                     help="skip enrichment (reviews/site/people) and only upsert what the "
                          "listing already knows. Fetches nothing and spends nothing — this "
                          "is the sweep that makes the local leads file redundant.")
+    ap.add_argument("--redo", action="store_true",
+                    help="re-open every checkpointed lead, even fully enriched ones. "
+                         "Normally a full run only re-opens leads whose checkpoint came "
+                         "from a --crm-only sweep.")
     ap.add_argument("--dry-run", action="store_true",
                     help="do everything except write to the CRM")
     args = ap.parse_args()

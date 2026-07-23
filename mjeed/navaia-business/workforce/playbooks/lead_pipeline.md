@@ -22,11 +22,11 @@
 ## Steps (run in order)
 ```bash
 # 1. Fetch (pick per the table above; both write the same CSV schema, keep the source id)
-docker run --rm -v "$PWD:/work" gosom/google-maps-scraper:latest-rod -input /work/queries.txt -results /work/leads_raw.csv -depth 3 -c 2 -geo "24.7136,46.6753" -lang ar -zoom 12 -exit-on-inactivity 3m
+docker run --rm -v "$PWD:/work" gosom/google-maps-scraper:latest-rod -input /work/queries.txt -results /work/leads_raw.json -json -extra-reviews -depth 3 -c 2 -geo "24.7136,46.6753" -lang ar -zoom 12 -exit-on-inactivity 3m
 .venv/Scripts/python.exe scripts/fetch_leads_osm.py                # 1b. OSM fallback → leads_osm.csv
 
 # CLOUD-BATCH PATH (preferred — the cloud does everything after the scrape):
-.venv/Scripts/python.exe scripts/distill_scraped_leads.py leads_raw.csv leads_scraped_compact.json   # scrape CSV → lead pool
+.venv/Scripts/python.exe scripts/distill_scraped_leads.py leads_raw.json leads_scraped_compact.json  # scrape output → lead pool (NDJSON, JSON array or legacy CSV — sniffed)
 .venv/Scripts/python.exe scripts/submit_lead_batch.py                                                # dispatch next batch to cloud Tariq
 #   ^ repeat per batch: it skips already-submitted leads (submitted_task marker in the pool file)
 #     and each task hard-stops at the channel-agnostic HITL gate before sending.

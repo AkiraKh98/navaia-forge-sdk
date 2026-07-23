@@ -394,19 +394,44 @@ def upsert_company(lead: dict, vertical: str, index: list[dict] | None = None,
 
 def upsert_person(lead: dict, vertical: str, company_id: str,
                   dry_run: bool = False) -> tuple[str | None, str]:
-    """Upsert the person by phone within the company. Phone is the identity here."""
+    """Upsert the person within the company, identified by phone, else by email.
+
+    Phone is the identity for a SCRAPED lead, which is where this started: a Maps listing
+    has a number and rarely an address. A lead sourced from Snov is the mirror image — it
+    carries an email and no phone at all — and with only a phone check that lead matched
+    nothing, so every re-run CREATED the same human again. The duplicate is not cosmetic:
+    two records for one person means two outreach sends to one inbox.
+
+    Email is only consulted when phone yields nothing, so scraped-lead behaviour is
+    unchanged. Both are exact-match on a normalised value; neither guesses from a name,
+    which is far too weak an identity in this market to merge records on.
+    """
     body = person_body(lead, vertical, company_id)
     want = norm_phone((body.get("phones") or {}).get("primaryPhoneNumber", ""))
+    want_email = ((body.get("emails") or {}).get("primaryEmail") or "").strip().lower()
 
     existing = None
-    if want:
+    # In a dry run the company was never created, so there is no id to filter people by.
+    # Querying anyway sends `companyId[eq]:` empty and the CRM answers 400 — a scary
+    # warning about a lookup that was never meaningful in the first place.
+    if company_id and (want or want_email):
         try:
             payload = _get("/rest/people", {"filter": f"companyId[eq]:{company_id}",
                                             "limit": 60})
-            for p in payload.get("data", {}).get("people", []):
-                if norm_phone((p.get("phones") or {}).get("primaryPhoneNumber", "")) == want:
-                    existing = p
-                    break
+            people = payload.get("data", {}).get("people", [])
+            if want:
+                for p in people:
+                    if norm_phone((p.get("phones") or {}).get("primaryPhoneNumber", "")) == want:
+                        existing = p
+                        break
+            if existing is None and want_email:
+                for p in people:
+                    emails = p.get("emails") or {}
+                    known = [(emails.get("primaryEmail") or "")]
+                    known += list(emails.get("additionalEmails") or [])
+                    if any((e or "").strip().lower() == want_email for e in known):
+                        existing = p
+                        break
         except httpx.HTTPError as e:
             print(f"    WARN person lookup failed ({e}); treating as new")
 

@@ -6,6 +6,55 @@
 
 ---
 
+## 2026-07-19
+
+- **PIPELINE FIXED: routing collision resolved, chain walkable end-to-end, fabricated leads
+  purged.** The chain had been broken since 75744c8 by three mutually contradictory pipeline
+  definitions. Root causes found and fixed:
+
+  1. **Duplicate scraper role.** `ghida_creative.md` AND `rashid_scraper.md` both defined a
+     "Scraper & Importer". Resolved per operator: **Rashid owns scraping**; Ghida restored to
+     Creative Director (visual identity / RTL layout, out of the outreach chain).
+  2. **Case-sensitive routing failure.** Ahmed's prompt emitted `[ROUTE:RASHID]` (uppercase)
+     while edges match `contains:[route:rashid]` literally. The marker matched nothing and
+     failed **silently** — no error, no operator notice.
+  3. **Missing edge.** Rashid was told to end with `[route:lina]`, but no `Rashid→Lina` edge
+     existed; his only outbound was `Rashid→Ahmed`. Dead end. Created the real edge
+     **`Rashid→Nora`** (`bc709de4`, `contains:[route:nora]`) — chain now 19 edges.
+  4. **Nora was a dead end.** Her prompt said receive-from-Lina, report, `[DONE]`, never route
+     — and she performed no CRM import despite owning the only CRM write. Rewritten: receives
+     from Rashid → scores → imports → `[route:lina]`.
+  5. **Tariq closed the chain early.** Ended with `[DONE]` after sending, so Ahmed never
+     aggregated. Now ends `[route:ahmed]`. HITL gate hardened: printing the manifest above a
+     `[DONE]` is called out as a FAILED gate.
+
+- **Consequence of the above (the reason this mattered):** with every route silently dead,
+  Ahmed looped — restating "I am Ahmed, I do not perform scraping work myself" five times —
+  then **fabricated two companies and two contacts and wrote them into the production CRM**
+  ("Al Rajhi Financial Solutions"/`alrajhifs.com`, "Riyadh Debt Recovery Partners"/`rdrp.sa`,
+  with invented emails and phones). Evidence: `ahmed_hallucination.txt`. All 4 records were
+  **verified live in `crm.navaia.sa` and deleted** (confirmed 404 after delete). Had the send
+  step run, real outreach would have gone to addresses that do not exist.
+
+- **New standing guards in `_shared_preamble.md`** (ships to all 7 agents):
+  `<never_fabricate>` — invented lead data is the workforce's worst failure; a tool failure
+  means report the exact error and end `[WAITING:BLOCKED]`, never substitute plausible data,
+  never route a fabricated batch onward. Zero honest leads is a success.
+  `<stay_in_role>` — silence after routing is EXPECTED (routing spawns an unobservable task);
+  never re-emit a marker, never "act as" another agent, never loop restating your role.
+  Routing section now states the marker is lowercase and case-sensitive, lists all 19 real
+  edges, and warns edges fire once per chain.
+
+- **Deployed + synced:** all 7 prompts pushed via `deploy_agents.py` (verified by re-fetch);
+  stale cloud `role` fields corrected (Rashid `Head of Strategy & Intelligence`→`Lead Scraper`,
+  Nora `Finance Manager`→`Lead Scorer & CRM Importer`, Tariq→`SDR / Outreach Sender`);
+  snapshot bundle re-exported from live.
+
+  **Canonical chain:** Ahmed —`[route:rashid]`→ Rashid —`[route:nora]`→ Nora —`[route:lina]`→
+  Lina —`[route:tariq]`→ Tariq —(HITL `[WAITING:QUESTION]`)→ —`[route:ahmed]`→ Ahmed `[DONE]`
+
+---
+
 ## 2026-07-14
 
 - **FIRST REAL BATCH OUTREACH SENT — 30 WhatsApp + 20 emails, 0 send errors.** Per-vertical

@@ -41,7 +41,14 @@ import json
 import re
 import sys
 
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+# Guarded, like every other module here. This rebind used to be UNCONDITIONAL, and that
+# silently broke any script importing both this chain and the pipeline_prep chain: two
+# TextIOWrapper objects end up over the SAME underlying buffer, the orphaned one is garbage
+# collected, and closing it closes the buffer both share. Every print afterwards raises
+# "I/O operation on closed file" from a line that has nothing to do with encoding.
+# The guard makes the second rebind a no-op, since the first already left stdout as UTF-8.
+if (sys.stdout.encoding or "").lower().replace("-", "") != "utf8":
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 csv.field_size_limit(10_000_000)  # review columns can be huge
 
 # ACTIVE verticals — locked to three by operator decision 2026-07-19.

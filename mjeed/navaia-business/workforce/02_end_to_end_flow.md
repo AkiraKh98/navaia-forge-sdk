@@ -22,27 +22,42 @@ proceeds.
 
 For clear tasks, he proceeds directly to delegation.
 
-### 3. Ahmed delegates to Lead Fetcher (Tariq)
+### 3. Ahmed routes the first hop to Rashid (Scraper)
 
-> "Find 20 SaaS founders in Riyadh, store with contacts in the CRM file."
+Ahmed ends his output with `[route:rashid]` and nothing else. He never performs the scrape
+himself — not even when the task says "JDI" or "just testing".
 
-Tariq runs the lead-fetch pipeline (see `agents/tariq_sdr_lead_fetcher.md`):
+Rashid runs the lead-fetch stage (see `agents/rashid_scraper.md`):
 1. Raw fetch via the self-hosted Google Maps scraper (primary) or Overpass/OSM
    (fallback) — the Google Places API is retired (CNTXT-only in Saudi)
-2. Email enrichment (website crawl + web search + Snov.io)
-3. Email verification (Snov.io v2)
-4. Bulk import to Twenty CRM
-5. Post-import verify
+2. Contact extraction from publicly visible site content (no Snov.io at this stage)
+3. Qualification against `<target_scope>` — drops out-of-vertical and micro operations
+4. Compiles ONE structured batch and ends with `[route:nora]`
 
-No dedup steps — the Twenty CRM backend handles duplicate elimination automatically. Leads land directly in Twenty CRM. Tariq reports actual-added count back to Ahmed. Tariq only messages Mjeed's leads (`createdBy.name = "Mjeed"`).
+**Rashid writes nothing to the CRM.** If scraping returns nothing or a credential is missing,
+he reports the exact error and ends `[WAITING:BLOCKED]` — he never invents leads to fill a gap.
+
+### 3b. Nora scores and performs the CRM import
+
+Nora is the **only** agent that writes leads to Twenty CRM (see `agents/nora_scorer.md`):
+1. Eligibility-check the batch; report dropped counts and reasons
+2. Score each survivor 0–100 per the §11.5 rubric
+3. Import linked Company + Person under `createdBy.name = "Mjeed"`, setting `sector`,
+   `leadScore`, and `leadStatus = "Not Contacted"`; overflow detail goes to Notes
+4. Ends with `[route:lina]`
+
+No dedup steps — the Twenty CRM backend handles duplicate elimination automatically. Nora
+reports actual-added count. Only Mjeed's leads are ever read or written.
 
 ### 4. Ahmed delegates outreach — Lina writes, Tariq sends
 
 Outreach is not an agent; it's a two-step handoff Ahmed orchestrates:
 
 **Lina (Marketing) — writes:**
-- Receives the lead list + per-lead context (sector, pain, decision maker) + framing
-  ("first-touch cold reach") + which of the 5 verticals to use.
+- Receives the scored, CRM-imported batch from Nora via `[route:lina]` — per-lead context
+  (sector, pain, decision maker) + framing ("first-touch cold reach") + vertical.
+- The routed payload is truncated at 12,000 chars; if only CRM ids arrive, Lina reads the
+  leads back from the CRM rather than guessing.
 - Produces finished, approved copy from `04_outreach_templates.md`: subject + body per
   touch, benefit pair chosen, tokens filled (`{honorific+name}`, `{pain_line}`,
   `{benefit_pair}`, vertical noun). WhatsApp variant is shorter.
@@ -106,26 +121,36 @@ Ahmed then routes follow-ups based on reply tone:
 
 ## Agent Handoff Map
 
+The chain is a single sequential run of `[route:...]` markers. Each arrow below is a REAL
+cloud edge; the marker in brackets is what the agent must emit as its final line (lowercase).
+
 ```
 User
   ↓ (assign task)
-Ahmed (GM) [container host — spawns agents]
-  ↓ (spawn: find leads)
-Tariq (SDR)
-  ↓ (leads in CRM)
-Ahmed (GM)
-  ↓ (spawn: write outreach)
-Lina (writes copy)
-  ↓ (rendered previews)
+Ahmed (GM — routes the first hop only)
+  ↓ [route:rashid]
+Rashid (Scraper — scrapes Maps/OSM; writes NOTHING to CRM)
+  ↓ [route:nora]
+Nora (Scorer & Importer — eligibility, score 0-100, THE CRM import under Mjeed)
+  ↓ [route:lina]
+Lina (Marketing — Touch-1 Arabic copy, tokens filled)
+  ↓ [route:tariq]
+Tariq (SDR/Sender)
+  ↓ presents rendered manifest, STOPS at [WAITING:QUESTION]
 [Operator HITL approval — any channel: dashboard / Telegram / …]
   ↓ (approved)
-Tariq (sends: email via Snov→Zoho; WhatsApp via Baian on cloud)
-  ↓ (updates CRM leadStatus)
-  ↓ (replies come back → updates CRM first)
-Ahmed (GM)
-  ↓ (route follow-ups, update leadStatus)
-Tariq (send) / Lina (rewrite) / User
+Tariq (sends: email via Snov→Zoho; WhatsApp via Baian on cloud; updates CRM leadStatus)
+  ↓ [route:ahmed]
+Ahmed (GM — aggregates every step, reports to operator, ends [DONE])
 ```
+
+**Not in this chain:** Ghida (Creative — visual identity, RTL/Arabic layout) and Fahad
+(Account Manager — post-sale, expansion).
+
+> **Routing is literal and case-sensitive.** Edges match `contains:[route:name]` in lowercase.
+> `[ROUTE:NAME]` matches nothing, fails silently, and strands the chain — this caused the
+> 2026-07-19 incident where Ahmed looped, then fabricated CRM leads rather than stopping.
+> An edge also fires only ONCE per chain: never route backwards or re-emit a marker.
 
 ---
 
