@@ -123,29 +123,58 @@ _COMMON_GIVEN = {
 }
 
 
+# The name/company/phone authority USED to be the local prospect + lead-pool files. Those
+# are deleted once their data lands in the CRM (CRM-single-source, 2026-07), which silently
+# blinded this guard — names/companies/phones had no source, so the scan passed everything.
+# `.leak_denylist.json` restores it: `scripts/build_leak_denylist.py` derives it from the CRM
+# (the new single source) and it is gitignored, so the hook stays OFFLINE and the list never
+# itself commits. Each source function reads the legacy files AND the denylist, so it works
+# whether the local files exist or not.
+DENYLIST = ".leak_denylist.json"
+
+
+def _denylist() -> dict:
+    try:
+        with io.open(os.path.join(ROOT, DENYLIST), encoding="utf-8") as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) else {}
+    except (FileNotFoundError, json.JSONDecodeError, AttributeError, TypeError):
+        return {}
+
+
 def real_names() -> set[str]:
-    """Distinctive single tokens of real people from the local (gitignored) prospect files.
+    """Distinctive single tokens of real people from the prospect files + CRM denylist.
 
     Common given names are excluded here and handled only as part of a full pair (see
     `real_name_pairs`), so a lone 'Abdullah' in prose is not treated as a leak while a
     distinctive surname still is.
     """
+    # DELIBERATELY NOT the CRM denylist. Single-token matching against ~900 CRM people
+    # flags ordinary prose — an agent name ("rashid"), a geographic word ("saudi") — because
+    # one common token is low-confidence by nature. The CRM is matched through the
+    # high-confidence signals instead: full name PAIRS, whole company names, and phones (see
+    # the functions below). Lone-token matching stays scoped to the small curated legacy
+    # files, which is what it was designed for.
     names: set[str] = set()
+    rows: list = []
     for fname in ("prospects.json", "contacts.json"):
         try:
             with io.open(os.path.join(ROOT, fname), encoding="utf-8") as f:
-                for row in json.load(f):
-                    full = (row.get("name") or "").strip()
-                    for token in full.split():
-                        cleaned = token.strip(".,-").strip().lower()
-                        # Only distinctive tokens: a 3-letter fragment matches everything,
-                        # and a common given name matches half the prose in the repo.
-                        if (len(cleaned) >= 5 and cleaned not in _NOT_A_PERSON_TOKEN
-                                and cleaned not in _COMMON_GIVEN
-                                and not _FIXTURE_OK.search(cleaned)):
-                            names.add(cleaned)
+                rows += json.load(f)
         except (FileNotFoundError, json.JSONDecodeError, AttributeError, TypeError):
             continue
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        full = (row.get("name") or "").strip()
+        for token in full.split():
+            cleaned = token.strip(".,-").strip().lower()
+            # Only distinctive tokens: a 3-letter fragment matches everything, and a
+            # common given name matches half the prose in the repo.
+            if (len(cleaned) >= 5 and cleaned not in _NOT_A_PERSON_TOKEN
+                    and cleaned not in _COMMON_GIVEN
+                    and not _FIXTURE_OK.search(cleaned)):
+                names.add(cleaned)
     return names
 
 
@@ -156,19 +185,22 @@ def real_name_pairs() -> list[tuple[str, str]]:
     is safe alone is still caught when it rides next to its real surname.
     """
     pairs: list[tuple[str, str]] = []
+    rows = list(_denylist().get("people") or [])
     for fname in ("prospects.json", "contacts.json"):
         try:
             with io.open(os.path.join(ROOT, fname), encoding="utf-8") as f:
-                for row in json.load(f):
-                    toks = [t.strip(".,-").strip().lower()
-                            for t in (row.get("name") or "").split()]
-                    toks = [t for t in toks
-                            if len(t) >= 3 and t not in _NOT_A_PERSON_TOKEN
-                            and not _FIXTURE_OK.search(t)]
-                    if len(toks) >= 2:
-                        pairs.append((toks[0], toks[-1]))
+                rows += json.load(f)
         except (FileNotFoundError, json.JSONDecodeError, AttributeError, TypeError):
             continue
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        toks = [t.strip(".,-").strip().lower() for t in (row.get("name") or "").split()]
+        toks = [t for t in toks
+                if len(t) >= 3 and t not in _NOT_A_PERSON_TOKEN
+                and not _FIXTURE_OK.search(t)]
+        if len(toks) >= 2:
+            pairs.append((toks[0], toks[-1]))
     return pairs
 
 
@@ -189,14 +221,18 @@ def real_companies() -> set[str]:
     Only names of 8+ characters, so a short generic title cannot match ordinary prose.
     """
     out: set[str] = set()
+    rows = list(_denylist().get("companies") or [])
     try:
         with io.open(os.path.join(ROOT, _LEAD_POOL), encoding="utf-8") as f:
-            for row in json.load(f):
-                name = (row.get("name") or "").strip()
-                if len(name) >= 8 and not _FIXTURE_OK.search(name):
-                    out.add(name.lower())
+            rows += json.load(f)
     except (FileNotFoundError, json.JSONDecodeError, AttributeError, TypeError):
         pass
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        name = (row.get("name") or "").strip()
+        if len(name) >= 8 and not _FIXTURE_OK.search(name):
+            out.add(name.lower())
     return out
 
 
@@ -207,14 +243,18 @@ def real_lead_phones() -> set[str]:
     so a number cannot slip through by being written differently.
     """
     out: set[str] = set()
+    rows = list(_denylist().get("people") or [])
     try:
         with io.open(os.path.join(ROOT, _LEAD_POOL), encoding="utf-8") as f:
-            for row in json.load(f):
-                digits = re.sub(r"\D", "", row.get("phone") or "")
-                if len(digits) >= 9:
-                    out.add(digits[-9:])
+            rows += json.load(f)
     except (FileNotFoundError, json.JSONDecodeError, AttributeError, TypeError):
         pass
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        digits = re.sub(r"\D", "", row.get("phone") or "")
+        if len(digits) >= 9:
+            out.add(digits[-9:])
     return out
 
 

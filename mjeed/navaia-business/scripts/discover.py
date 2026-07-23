@@ -521,7 +521,13 @@ def run(args) -> int:
                     continue
                 record.update(step_reviews(lead, spend=args.llm, key=_llm_key()))
                 record.update(step_site(record, cache, args.page_budget))
-                record.update(step_people(record, cache, args.page_budget))
+                # The people-crawl is a SECOND pass over the same host with a different path
+                # list — it roughly doubles per-lead crawl time. On this pool it yields
+                # almost no real names (and a false positive: "التنمية المستدامة"), so
+                # --skip-people trades that near-zero yield for ~half the wall-clock. The
+                # company mailbox from step_site still lands via the reconcile below.
+                if not args.skip_people:
+                    record.update(step_people(record, cache, args.page_budget))
                 # step_people runs AFTER step_site and REPLACES record["person"], so the
                 # site email is reconciled here, once both have run. A named person's OWN
                 # address always wins; the company mailbox (info@) fills a person who has
@@ -626,6 +632,9 @@ def main() -> int:
                     help="skip enrichment (reviews/site/people) and only upsert what the "
                          "listing already knows. Fetches nothing and spends nothing — this "
                          "is the sweep that makes the local leads file redundant.")
+    ap.add_argument("--skip-people", action="store_true",
+                    help="skip the team/leadership crawl (a low-yield second pass on this "
+                         "pool); halves per-lead crawl time. Emails still harvested.")
     ap.add_argument("--redo", action="store_true",
                     help="re-open every checkpointed lead, even fully enriched ones. "
                          "Normally a full run only re-opens leads whose checkpoint came "
